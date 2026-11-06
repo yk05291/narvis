@@ -14,16 +14,66 @@ body {
 
 .hud-bg {
   background:
-    radial-gradient(circle at 50% 20%, rgba(0, 240, 255, 0.08), transparent 50%),
+    radial-gradient(ellipse 60% 55% at 50% 50%, rgba(0, 240, 255, 0.10), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55)),
     var(--bg);
 }
-
-.glass {
-  background: rgba(10, 20, 35, 0.65);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 240, 255, 0.2);
-  border-radius: 12px;
+/* 아주 옅은 HUD 격자 */
+.hud-grid {
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 30%, transparent 85%);
 }
+
+/* 유리 패널: 투명도 높게 + 얇은 네온 테두리 + 네 모서리 HUD 꺾쇠 */
+.glass {
+  --c: rgba(0, 240, 255, 0.75);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 12px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 1px 12px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 12px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 1px 12px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 12px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px 12px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 12px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px 12px no-repeat,
+    rgba(6, 14, 26, 0.34);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  border: 1px solid rgba(0, 240, 255, 0.16);
+  border-radius: 6px;
+  box-shadow: 0 0 22px rgba(0, 240, 255, 0.05), inset 0 0 18px rgba(0, 240, 255, 0.03);
+}
+.glass-alert { --c: rgba(252, 211, 77, 0.85); border-color: rgba(252, 211, 77, 0.3); }
+
+/* 거대한 코어: Focus Mode 에선 작아지며 위로 (큰 화면에서만) */
+.core-wrap { transition: transform 0.65s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.65s; }
+@media (min-width: 1024px) {
+  .core-focused { transform: translateY(-25vh) scale(0.5); filter: brightness(1.2); }
+}
+
+/* Focus 카드 */
+.focus-backdrop { background: radial-gradient(ellipse at 50% 60%, rgba(5, 8, 17, 0.35), rgba(5, 8, 17, 0.6)); }
+.focus-card { top: 40vh; }
+@media (max-width: 1023px) { .focus-card { top: 12vh; max-height: 76vh; } }
+.focus-card .glass { --c: rgba(0, 240, 255, 1); border-color: rgba(0, 240, 255, 0.35); background-color: rgba(6, 14, 26, 0.72); box-shadow: 0 0 40px rgba(0, 240, 255, 0.15); }
+
+/* 아래 가운데 큰 마이크 */
+.mic-orb {
+  width: 64px; height: 64px; border-radius: 9999px; font-size: 1.4rem;
+  background: radial-gradient(circle at 50% 40%, rgba(0, 240, 255, 0.25), rgba(6, 14, 26, 0.6));
+  border: 1px solid rgba(0, 240, 255, 0.5);
+  box-shadow: 0 0 24px rgba(0, 240, 255, 0.25), inset 0 0 12px rgba(0, 240, 255, 0.2);
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+.mic-orb:hover:not(:disabled) { transform: scale(1.06); box-shadow: 0 0 34px rgba(0, 240, 255, 0.4); }
+.mic-orb:disabled { opacity: 0.4; }
+.mic-orb-rec { background: radial-gradient(circle, rgba(244, 63, 94, 0.35), rgba(6, 14, 26, 0.6)); border-color: #fb7185; color: #fecdd3; animation: recPulse 1.2s ease-in-out infinite; }
+
+/* 얇은 스크롤바 */
+.hud-scroll { scrollbar-width: thin; scrollbar-color: rgba(0, 240, 255, 0.25) transparent; }
 
 .bubble {
   display: inline-block;
@@ -32,7 +82,7 @@ body {
   text-align: left;
   padding: 0.5rem 0.8rem;
   border-radius: 10px;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 .bubble-ai { background: rgba(0, 240, 255, 0.08); border: 1px solid rgba(0, 240, 255, 0.25); }
@@ -64,5 +114,6 @@ body {
 @keyframes breathe { 0%, 100% { transform: scale(0.9); } 50% { transform: scale(1); } }
 
 @media (prefers-reduced-motion: reduce) {
+  .core-wrap { transition: none; }
   .core, .core-ring { animation: none; }
 }

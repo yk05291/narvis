@@ -2,6 +2,7 @@
 
 // 오늘 일정 대시보드: 수업 + 구글 캘린더 + NARVIS 일정 + 마감 과제를 시간순으로
 import { useEffect, useState } from "react";
+import { cachedJson, fetchJson } from "@/lib/clientCache";
 
 type Item = { time: string; end?: string; title: string; kind: "수업" | "구글" | "일정" | "마감"; sub?: string | null; link?: string | null };
 type Schedule = {
@@ -52,14 +53,13 @@ export const GOOGLE_MSG: Record<string, string> = {
 };
 
 export default function TodayPanel({ refreshKey }: { refreshKey: number }) {
-  const [s, setS] = useState<Schedule | null>(null);
+  const [s, setS] = useState<Schedule | null>(() => cachedJson<Schedule>("/api/schedule") ?? null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/schedule")
-      .then((r) => r.json())
+    fetchJson<Schedule & { error?: string }>("/api/schedule")
       .then((d) => alive && !d.error && setS(d))
       .catch(() => {});
     return () => {

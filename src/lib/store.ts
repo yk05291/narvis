@@ -119,6 +119,58 @@ export async function listAssignments(userId: string, includeCompleted: boolean)
   return must(await q) as Assignment[];
 }
 
+export async function listSubjects(userId: string) {
+  const rows = must(await db().from("timetables").select("subject_name").eq("user_id", userId)) as { subject_name: string }[];
+  return [...new Set(rows.map((r) => r.subject_name))].sort();
+}
+
+// ---------- 과제 직접 관리 (Boss가 화면에서 누르는 것 → 바로 반영) ----------
+export async function createAssignment(userId: string, a: { subject_name: string; title: string; due_date: string }) {
+  return must(
+    await db()
+      .from("assignments")
+      .insert({ user_id: userId, ...a, is_completed: false })
+      .select("*")
+      .single(),
+  ) as Assignment;
+}
+
+export async function setAssignmentDone(userId: string, id: string, done: boolean) {
+  const rows = must(
+    await db().from("assignments").update({ is_completed: done }).eq("user_id", userId).eq("id", id).select("*"),
+  ) as Assignment[];
+  return rows[0] ?? null;
+}
+
+export async function deleteAssignment(userId: string, id: string) {
+  const rows = must(await db().from("assignments").delete().eq("user_id", userId).eq("id", id).select("id")) as {
+    id: string;
+  }[];
+  return rows.length > 0;
+}
+
+// 채팅용: "자료구조 과제 다 했어" → 단어로 찾아서 완료 처리
+// 가장 많이 맞는 과제가 딱 하나일 때만 완료하고, 애매하면 후보만 돌려줘요
+const STOP = new Set(["과제", "숙제", "레포트", "리포트", "다", "했어", "끝", "완료", "제출", "그거"]);
+export async function completeAssignmentByName(userId: string, query: string) {
+  const open = await listAssignments(userId, false);
+  const words = query
+    .split(/[\s·,]+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 2 && !STOP.has(w));
+  const scored = open
+    .map((a) => {
+      const hay = `${a.subject_name} ${a.title}`.replace(/\s+/g, "");
+      return { a, score: words.filter((w) => hay.includes(w.replace(/\s+/g, ""))).length };
+    })
+    .filter((x) => x.score > 0)
+    .sort((x, y) => y.score - x.score);
+  const best = scored.filter((x) => x.score === scored[0]?.score).map((x) => x.a);
+  if (best.length !== 1) return { done: null, candidates: best.length ? best : open };
+  const done = await setAssignmentDone(userId, best[0].id, true);
+  return { done, candidates: best };
+}
+
 export async function listPendingActions(userId: string) {
   return must(
     await db().from("pending_actions").select("id, kind, summary, data").eq("user_id", userId).order("created_at"),

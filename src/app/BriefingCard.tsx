@@ -2,6 +2,7 @@
 
 // 아침 브리핑 카드: 브리핑 시간이 지나면 메인 화면 맨 위에 떠요
 import { useEffect, useState } from "react";
+import { cachedJson, fetchJson } from "@/lib/clientCache";
 
 type Item = { time?: string; title: string; sub?: string | null; link?: string | null };
 type Briefing = {
@@ -51,19 +52,22 @@ export default function BriefingCard({
   onSpeak,
   speaking,
   refreshKey,
+  compact = false,
+  onExpand,
 }: {
   onSpeak: (text: string) => void;
   speaking: boolean;
   refreshKey: number;
+  compact?: boolean; // 사이드바용 짧은 모양
+  onExpand?: () => void; // '자세히' → 화면 가운데로
 }) {
-  const [r, setR] = useState<Result | null>(null);
+  const [r, setR] = useState<Result | null>(() => cachedJson<Result>("/api/briefing") ?? null);
   const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/briefing")
-      .then((res) => res.json())
+    fetchJson<Result & { error?: string }>("/api/briefing")
       .then((d) => {
         if (!alive || d.error) return;
         setR(d);
@@ -106,7 +110,7 @@ export default function BriefingCard({
   if (r.status === "not_yet" || dismissed) {
     // 작게 접힌 상태
     return (
-      <div className="flex w-full max-w-3xl items-center justify-between px-1 font-mono text-xs text-cyan-100/50">
+      <div className="glass flex w-full items-center justify-between gap-2 px-4 py-3 font-mono text-xs text-cyan-100/50">
         <span>{r.status === "not_yet" ? `아침 브리핑은 ${r.briefing_time}에 준비돼요` : "오늘 브리핑을 닫았어요"}</span>
         <button onClick={() => load("now=1")} disabled={busy} className="text-cyan-300 hover:underline">
           {busy ? "준비 중…" : "지금 브리핑 보기"}
@@ -123,8 +127,30 @@ export default function BriefingCard({
   );
   const empty = !b.classes.length && !b.events.length && !b.deadlines.length && !b.new_notices.length && !b.closing_notices.length;
 
+  if (compact) {
+    return (
+      <section className="glass w-full p-4" aria-label="아침 브리핑">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="font-mono text-xs tracking-widest text-cyan-300">BRIEFING // {Number(m)}.{Number(d)} ({dow})</span>
+          <span className="flex items-center gap-2 text-xs">
+            <button onClick={() => onSpeak(b.spoken)} className="btn btn-ok px-2 py-1" disabled={speaking} aria-label="브리핑 듣기">
+              {speaking ? "…" : "▶"}
+            </button>
+            {onExpand && (
+              <button onClick={onExpand} className="text-cyan-100/60 hover:text-cyan-300">
+                자세히
+              </button>
+            )}
+          </span>
+        </div>
+        <p className="line-clamp-3 text-sm leading-relaxed text-cyan-50/80">{b.spoken}</p>
+        {b.leave_by && <p className="mt-2 text-xs text-amber-200">🚶 {b.leave_by}까지 출발</p>}
+      </section>
+    );
+  }
+
   return (
-    <section className="glass w-full max-w-3xl p-4 ring-1 ring-cyan-300/40" aria-label="아침 브리핑">
+    <section className="glass w-full p-4" aria-label="아침 브리핑">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <span className="font-mono text-xs tracking-widest text-cyan-300">
           MORNING BRIEFING // {Number(m)}월 {Number(d)}일 ({dow})

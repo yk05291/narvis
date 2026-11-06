@@ -36,7 +36,7 @@ function webglAvailable() {
   }
 }
 
-export default function AICore({ state }: { state: CoreState }) {
+export default function AICore({ state, className = "h-[220px] w-[220px]" }: { state: CoreState; className?: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
   const [fallback, setFallback] = useState(false);
@@ -62,7 +62,7 @@ export default function AICore({ state }: { state: CoreState }) {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-    camera.position.z = 4.2;
+    camera.position.z = 3.6;
 
     const group = new THREE.Group();
     scene.add(group);
@@ -224,5 +224,5 @@ export default function AICore({ state }: { state: CoreState }) {
       </div>
     );
   }
-  return <div ref={mountRef} className="h-[220px] w-[220px]" aria-hidden data-core-state={state} />;
+  return <div ref={mountRef} className={className} aria-hidden data-core-state={state} />;
 }

@@ -105,6 +105,7 @@ export async function runAgent(
   history: GroqMessage[],
   tools: Tool[],
   maxRounds = 6,
+  used: string[] = [], // 이번 답에 실제로 쓴 도구 이름들 (화면 포커스용)
 ): Promise<string> {
   const messages: GroqMessage[] = [{ role: "system", content: system }, ...history];
   const groqTools = toGroqTools(tools);
@@ -116,6 +117,7 @@ export async function runAgent(
     messages.push({ role: "assistant", content: msg.content, tool_calls: msg.tool_calls });
 
     for (const call of msg.tool_calls) {
+      used.push(call.function.name);
       const t = tools.find((x) => x.name === call.function.name);
       let result: string;
       if (!t) {

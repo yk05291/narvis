@@ -6,27 +6,23 @@ import TodayPanel, { GOOGLE_MSG } from "./TodayPanel";
 import AICore from "./AICore";
 import BriefingCard from "./BriefingCard";
 import MemoryPanel from "./MemoryPanel";
+import AssignmentsPanel from "./AssignmentsPanel";
+import NoticesPanel, { type Notice } from "./NoticesPanel";
+import FocusLayer from "./FocusLayer";
 import type { CoreState } from "@/lib/voice/level";
 import { startRecording, transcribe, type Recording } from "@/lib/voice/recorder";
 import { speak, stopSpeaking, ttsSupported } from "@/lib/voice/speaker";
 
 type ChatTurn = { role: "user" | "assistant"; text: string; notices?: Notice[] };
 type PendingAction = { id: string; kind: string; summary: string };
-type Notice = {
-  id: string;
-  category: string;
-  title: string;
-  posted_at: string | null;
-  source_url: string;
-  structured_data: { summary?: string | null; application_end?: string | null };
+type FocusId = "briefing" | "schedule" | "study" | "notices" | "memory";
+const FOCUS_TITLE: Record<FocusId, string> = {
+  briefing: "MORNING BRIEFING",
+  schedule: "SCHEDULE",
+  study: "STUDY PROGRESS",
+  notices: "NOTICES",
+  memory: "MEMORY",
 };
-
-function dday(end: string) {
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
-  const diff = Math.round((Date.parse(end) - Date.parse(today)) / 86400000);
-  if (diff < 0) return "마감";
-  return diff === 0 ? "D-DAY" : `D-${diff}`;
-}
 
 // 주소(https://...)를 누를 수 있는 링크로 바꿔서 보여줘요
 function Linkify({ text }: { text: string }) {
@@ -49,14 +45,18 @@ function Linkify({ text }: { text: string }) {
 const GREETING_MAIN = (title: string) => `안녕하세요, ${title}. NARVIS 온라인입니다. 무엇을 도와드릴까요?`;
 const GREETING_ONBOARD =
   "안녕하세요. 저는 NARVIS, 당신의 개인 AI 비서입니다. 워크스페이스를 맞춰 볼게요.\n먼저, 제가 뭐라고 불러드리면 될까요? 그리고 한양여대 무슨 과에 다니세요?";
-const GREETING_RESUME = "지난번에 하던 설정을 이어서 할게요. 위 패널에서 비어 있는 항목을 알려주세요.";
+const GREETING_RESUME = "지난번에 하던 설정을 이어서 할게요. CALIBRATION 패널을 보고 비어 있는 항목을 알려주시거나, 다 맞으면 확인 · 저장을 눌러 주세요.";
 
 export default function Home() {
   const [mode, setMode] = useState<"loading" | "onboarding" | "main">("loading");
   const [ob, setOb] = useState<Onboarding | null>(null);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [scheduleKey, setScheduleKey] = useState(0);
-  const [showMemory, setShowMemory] = useState(false);
+  // Focus Mode: 가운데로 꺼낸 패널 (auto: 답 읽기가 끝나면 자동으로 돌아감)
+  const [focus, setFocus] = useState<{ id: FocusId; auto: boolean; closing: boolean } | null>(null);
+  const [focusHover, setFocusHover] = useState(false);
+  const panelRefs = useRef<Partial<Record<FocusId, HTMLElement | null>>>({});
+  const memoryBtnRef = useRef<HTMLButtonElement>(null);
   const [voiceOn, setVoiceOn] = useState(true);
   const [hint, setHint] = useState<string | null>(null);
   const recRef = useRef<Recording | null>(null);
@@ -64,9 +64,7 @@ export default function Home() {
   const [core, setCore] = useState<CoreState>("STANDBY");
   const [pending, setPending] = useState<PendingAction[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [notices, setNotices] = useState<{ latest: Notice[]; open: Notice[] }>({ latest: [], open: [] });
-  const [noticeTab, setNoticeTab] = useState<"open" | "latest">("open");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   function enterMain(title: string, msg?: string) {
     setMode("main");
@@ -88,14 +86,22 @@ export default function Home() {
       .then((r) => r.json())
       .then((d) => setPending(d.pending ?? []))
       .catch(() => {});
-    fetch("/api/notices")
-      .then((r) => r.json())
-      .then((d) => {
-        setNotices({ latest: d.latest ?? [], open: d.open ?? [] });
-        if (!d.open?.length) setNoticeTab("latest");
-      })
-      .catch(() => {});
   }, []);
+
+  function openFocus(id: FocusId, auto: boolean) {
+    setFocusHover(false);
+    setFocus({ id, auto, closing: false });
+  }
+  function closeFocus() {
+    setFocus((f) => (f ? { ...f, closing: true } : f));
+  }
+
+  // 자동으로 꺼낸 패널은: NARVIS가 다 읽고 나서(또는 음성이 꺼져 있으면 읽을 시간 뒤) 제자리로
+  useEffect(() => {
+    if (!focus?.auto || focus.closing || focusHover || core !== "STANDBY") return;
+    const t = setTimeout(closeFocus, voiceOn ? 2500 : 9000);
+    return () => clearTimeout(t);
+  }, [focus, focusHover, core, voiceOn]);
 
   // 구글 연결에서 돌아왔을 때 (?google=connected 등): 어느 화면이든 결과를 알려주고 주소 정리
   const [googleNote, setGoogleNote] = useState<{ ok: boolean; text: string } | null>(null);
@@ -182,8 +188,10 @@ export default function Home() {
     }
   }
 
+  // 새 메시지가 오면 대화창 안에서만 맨 아래로 (페이지 전체는 안 움직이게)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = chatScrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [turns, core]);
 
   async function send(spoken?: string) {
@@ -212,6 +220,7 @@ export default function Home() {
       if (mode === "onboarding") setOb({ step: data.step, draft: data.draft, missing: data.missing });
       if (data.pending?.length) setPending((p) => [...p, ...data.pending]);
       if (mode === "main") setScheduleKey((k) => k + 1);
+      if (mode === "main" && data.focus) openFocus(data.focus as FocusId, true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -256,19 +265,74 @@ export default function Home() {
     setTurns((t) => [...t, { role: "assistant", text: data.message ?? data.error }]);
   }
 
+  // 패널 하나를 그려요. 사이드바(작게)와 Focus(크게) 둘 다에서 써요.
+  function renderPanel(id: FocusId, inFocus: boolean) {
+    switch (id) {
+      case "briefing":
+        return (
+          <BriefingCard
+            refreshKey={scheduleKey}
+            compact={!inFocus}
+            onExpand={() => openFocus("briefing", false)}
+            speaking={core === "SPEAKING"}
+            onSpeak={(text) => {
+              if (!ttsSupported()) return setError("이 브라우저는 음성 읽기를 지원하지 않아요.");
+              if (!inFocus) openFocus("briefing", true);
+              setCore("SPEAKING");
+              speak(text, { onEnd: () => setCore((c) => (c === "SPEAKING" ? "STANDBY" : c)) });
+            }}
+          />
+        );
+      case "schedule":
+        return <TodayPanel refreshKey={scheduleKey} />;
+      case "study":
+        return <AssignmentsPanel refreshKey={scheduleKey} onChanged={() => setScheduleKey((k) => k + 1)} />;
+      case "notices":
+        return <NoticesPanel limit={inFocus ? 10 : 4} />;
+      case "memory":
+        return <MemoryPanel refreshKey={scheduleKey} onClose={closeFocus} />;
+    }
+  }
+
+  // 사이드바 칸: Focus로 꺼내지는 동안엔 자리만 남기고 투명하게
+  const slot = (id: FocusId) => (
+    <div
+      key={id}
+      ref={(el) => {
+        panelRefs.current[id] = el;
+      }}
+      className={`transition-opacity duration-300 ${focus?.id === id ? "opacity-0" : "opacity-100"}`}
+    >
+      {renderPanel(id, false)}
+    </div>
+  );
+
+  const status = { THINKING: "PROCESSING", LISTENING: "LISTENING", SPEAKING: "SPEAKING", STANDBY: mode === "onboarding" ? "CALIBRATING" : "ONLINE" }[core];
+
   return (
-    <main className="hud-bg flex min-h-screen flex-col items-center gap-6 px-4 py-8 text-cyan-50">
-      <header className="flex w-full max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-2 whitespace-nowrap font-mono text-xs tracking-[0.12em] text-cyan-300/70 sm:tracking-[0.3em]">
-        <span>NARVIS // v0.7</span>
+    <main className="hud-bg relative min-h-screen overflow-x-hidden text-cyan-50 lg:h-screen lg:overflow-hidden">
+      <div className="hud-grid pointer-events-none fixed inset-0" aria-hidden />
+
+      {/* ── 위쪽 얇은 바 ── */}
+      <header className="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 whitespace-nowrap px-4 pt-4 font-mono text-[11px] tracking-[0.2em] text-cyan-300/70 lg:absolute lg:inset-x-0 lg:top-0 lg:px-6">
+        <span className="flex items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_#00f0ff]" />
+          NARVIS // v0.9
+        </span>
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {mode === "main" && (
-            <button onClick={() => setShowMemory((v) => !v)} className={showMemory ? "text-violet-300" : "hover:text-cyan-300"} aria-pressed={showMemory}>
-              기억
+            <button
+              ref={memoryBtnRef}
+              onClick={() => (focus?.id === "memory" ? closeFocus() : openFocus("memory", false))}
+              className={focus?.id === "memory" ? "text-violet-300" : "hover:text-cyan-200"}
+              aria-pressed={focus?.id === "memory"}
+            >
+              MEMORY
             </button>
           )}
           {mode === "main" && (
-            <button onClick={() => onboardingAction("restart")} className="hover:text-cyan-300" disabled={core === "THINKING"}>
-              프로필 설정
+            <button onClick={() => onboardingAction("restart")} className="hover:text-cyan-200" disabled={core === "THINKING"}>
+              PROFILE
             </button>
           )}
           <button
@@ -277,207 +341,182 @@ export default function Home() {
             aria-pressed={voiceOn}
             title="NARVIS 답을 소리로 읽기"
           >
-            {voiceOn ? "VOICE ON" : "VOICE OFF"}
+            VOICE {voiceOn ? "ON" : "OFF"}
           </button>
-          <span>
-            {{ THINKING: "PROCESSING…", LISTENING: "LISTENING…", SPEAKING: "SPEAKING", STANDBY: mode === "onboarding" ? "CALIBRATING" : "SYSTEM ONLINE" }[core]}
-          </span>
         </span>
       </header>
 
-      <AICore state={core} />
+      {/* ── 가운데: 거대한 AI 코어 (화면의 주인공) ── */}
+      <div
+        className={`pointer-events-none relative flex justify-center pt-2 lg:absolute lg:inset-0 lg:items-center lg:pt-0 ${focus ? "z-[45]" : "z-0"}`}
+      >
+        <div className={`core-wrap ${focus && !focus.closing ? "core-focused" : ""}`}>
+          <AICore state={core} className="h-[min(46vh,92vw)] w-[min(46vh,92vw)] lg:h-[min(76vh,60vw)] lg:w-[min(76vh,60vw)]" />
+        </div>
+      </div>
 
-      {googleNote && (
-        <div
-          role="status"
-          className={`glass flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3 text-sm ${googleNote.ok ? "text-emerald-200" : "text-rose-200"}`}
+      {/* ── 아래 가운데: 상태 + 큰 마이크 ── */}
+      <div className="relative z-20 flex flex-col items-center gap-2 pb-2 lg:absolute lg:bottom-5 lg:left-1/2 lg:-translate-x-1/2 lg:pb-0">
+        <span className={`font-mono text-[11px] tracking-[0.4em] ${core === "LISTENING" ? "text-rose-200" : "text-cyan-300/80"}`}>
+          {status}
+          {core === "LISTENING" && " · 말을 마치면 자동 전송"}
+        </span>
+        <button
+          type="button"
+          onClick={toggleMic}
+          disabled={core === "THINKING" || mode === "loading"}
+          className={`mic-orb ${core === "LISTENING" ? "mic-orb-rec" : ""}`}
+          aria-label={core === "LISTENING" ? "듣기 멈추기" : "음성으로 말하기"}
+          title={core === "LISTENING" ? "듣기 멈추기" : "음성으로 말하기"}
         >
-          <span>{googleNote.text}</span>
-          <span className="flex shrink-0 gap-3">
-            {!googleNote.ok && (
-              <a href="/api/google/connect" className="underline">
-                다시 시도
+          {core === "LISTENING" ? "■" : "🎤"}
+        </button>
+      </div>
+
+      {/* ── 왼쪽 사이드바: 정보 패널들 ── */}
+      <aside
+        className="hud-scroll relative z-10 mx-auto mt-4 flex w-full max-w-xl flex-col gap-3 px-4 lg:absolute lg:bottom-5 lg:left-5 lg:top-12 lg:mt-0 lg:w-[320px] lg:max-w-none lg:overflow-y-auto lg:px-0 xl:w-[350px]"
+        aria-label="정보 패널"
+      >
+        {mode === "onboarding" && ob && (
+          <>
+            <CalibrationPanel ob={ob} busy={core === "THINKING"} onAction={onboardingAction} />
+            <p className="px-1 text-xs text-cyan-100/50">
+              구글 캘린더는 설정이 끝난 뒤 연결해도 되고,{" "}
+              <a href="/api/google/connect" className="text-cyan-300 underline">
+                지금 연결
               </a>
-            )}
-            <button onClick={() => setGoogleNote(null)} aria-label="닫기">
-              ✕
-            </button>
-          </span>
-        </div>
-      )}
+              할 수도 있어요.
+            </p>
+          </>
+        )}
+        {mode === "main" && (
+          <>
+            {slot("briefing")}
+            {slot("schedule")}
+            {slot("study")}
+            {slot("notices")}
+          </>
+        )}
+      </aside>
 
-      {mode === "onboarding" && ob && (
-        <p className="w-full max-w-3xl text-right text-xs text-cyan-100/50">
-          구글 캘린더는 설정이 끝난 뒤 연결해도 되고,{" "}
-          <a href="/api/google/connect" className="text-cyan-300 underline">
-            지금 연결
-          </a>
-          할 수도 있어요.
-        </p>
-      )}
-
-      {mode === "onboarding" && ob && (
-        <CalibrationPanel ob={ob} busy={core === "THINKING"} onAction={onboardingAction} />
-      )}
-
-      {mode === "main" && (
-        <BriefingCard
-          refreshKey={scheduleKey}
-          speaking={core === "SPEAKING"}
-          onSpeak={(text) => {
-            if (!ttsSupported()) return setError("이 브라우저는 음성 읽기를 지원하지 않아요.");
-            setCore("SPEAKING");
-            speak(text, { onEnd: () => setCore((c) => (c === "SPEAKING" ? "STANDBY" : c)) });
-          }}
-        />
-      )}
-
-      {mode === "main" && showMemory && <MemoryPanel refreshKey={scheduleKey} onClose={() => setShowMemory(false)} />}
-
-      {mode === "main" && <TodayPanel refreshKey={scheduleKey} />}
-
-      {mode === "main" && pending.length > 0 && (
-        <section className="glass w-full max-w-3xl p-4">
-          <h2 className="mb-2 font-mono text-xs tracking-widest text-amber-300">
-            승인 대기 중 ({pending.length})
-          </h2>
-          <ul className="space-y-2">
-            {pending.map((a) =>
-              a.kind === "save_memory" ? (
-                <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span>
-                    <span className="mr-1 text-violet-300">💭 기억해도 될까요?</span>
-                    {a.summary.replace(/^기억 · [^:]+:\s*/, "")}
-                  </span>
-                  <span className="flex gap-2">
-                    <button onClick={() => decide(a.id, true)} className="btn btn-ok">기억하기</button>
-                    <button onClick={() => decide(a.id, false)} className="btn btn-no">아니요</button>
-                  </span>
-                </li>
-              ) : (
-                <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                  <span>{a.summary}</span>
-                  <span className="flex gap-2">
-                    <button onClick={() => decide(a.id, true)} className="btn btn-ok">승인</button>
-                    <button onClick={() => decide(a.id, false)} className="btn btn-no">취소</button>
-                  </span>
-                </li>
-              ),
-            )}
-          </ul>
-        </section>
-      )}
-
-      {mode === "main" && (notices.latest.length > 0 || notices.open.length > 0) && (
-        <section className="glass w-full max-w-3xl p-4">
-          <div className="mb-3 flex gap-4 font-mono text-xs tracking-widest">
-            <button
-              onClick={() => setNoticeTab("open")}
-              className={noticeTab === "open" ? "text-cyan-300" : "text-cyan-100/40"}
-            >
-              마감 임박 ({notices.open.length})
-            </button>
-            <button
-              onClick={() => setNoticeTab("latest")}
-              className={noticeTab === "latest" ? "text-cyan-300" : "text-cyan-100/40"}
-            >
-              최근 학교 공지
-            </button>
-          </div>
-          <ul className="space-y-2 text-sm">
-            {(noticeTab === "open" ? notices.open : notices.latest).map((n) => (
-              <li key={n.id} className="flex items-start gap-2">
-                <span className="shrink-0 rounded bg-cyan-400/10 px-1.5 py-0.5 text-xs text-cyan-300">{n.category}</span>
-                <a href={n.source_url} target="_blank" rel="noreferrer" className="flex-1 hover:text-cyan-300">
-                  {n.title}
-                  {n.structured_data?.summary && (
-                    <span className="block text-xs text-cyan-100/50">{n.structured_data.summary}</span>
-                  )}
+      {/* ── 오른쪽 사이드바: 알림 + 대화 ── */}
+      <aside
+        className="relative z-10 mx-auto mt-3 flex w-full max-w-xl flex-col gap-3 px-4 pb-6 lg:absolute lg:bottom-5 lg:right-5 lg:top-12 lg:mt-0 lg:w-[350px] lg:max-w-none lg:px-0 lg:pb-0 xl:w-[380px]"
+        aria-label="대화"
+      >
+        {googleNote && (
+          <div role="status" className={`glass flex items-center justify-between gap-3 px-4 py-3 text-sm ${googleNote.ok ? "text-emerald-200" : "text-rose-200"}`}>
+            <span>{googleNote.text}</span>
+            <span className="flex shrink-0 gap-3">
+              {!googleNote.ok && (
+                <a href="/api/google/connect" className="underline">
+                  다시 시도
                 </a>
-                {n.structured_data?.application_end ? (
-                  <span
-                    className={`shrink-0 font-mono text-xs ${dday(n.structured_data.application_end) === "마감" ? "text-cyan-100/40" : "text-amber-300"}`}
-                  >
-                    {dday(n.structured_data.application_end)}
-                  </span>
-                ) : (
-                  <span className="shrink-0 font-mono text-xs text-cyan-100/40">{n.posted_at}</span>
-                )}
-              </li>
-            ))}
-            {noticeTab === "open" && notices.open.length === 0 && (
-              <li className="text-cyan-100/50">지금 신청 중인 공지가 없어요.</li>
-            )}
-          </ul>
-        </section>
-      )}
-
-      <section className="glass flex w-full max-w-3xl flex-1 flex-col">
-        <div className="flex-1 space-y-3 overflow-y-auto p-4" style={{ maxHeight: "50vh" }}>
-          {turns.map((t, i) => (
-            <div key={i} className={t.role === "user" ? "text-right" : ""}>
-              <div className={`bubble ${t.role === "user" ? "bubble-user" : "bubble-ai"}`}>
-                <Linkify text={t.text} />
-              </div>
-              {t.notices && t.notices.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {t.notices.map((n) => (
-                    <li key={n.id}>
-                      <a
-                        href={n.source_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block rounded-md border border-cyan-400/20 px-3 py-1.5 text-xs hover:border-cyan-300"
-                      >
-                        <span className="text-cyan-300">[{n.category}]</span> {n.title}
-                        {n.structured_data?.application_end && (
-                          <span className="ml-1 text-amber-300">· 마감 {n.structured_data.application_end}</span>
-                        )}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
               )}
-            </div>
-          ))}
-          {core === "THINKING" && <div className="font-mono text-xs text-cyan-300/70">NARVIS 분석 중…</div>}
-          {core === "LISTENING" && (
-            <div className="font-mono text-xs text-cyan-300/70">듣고 있어요… 말을 마치면 잠시 후 자동으로 보내요</div>
-          )}
-          {hint && <div className="text-sm text-amber-300/80">{hint}</div>}
-          {error && <div className="text-sm text-rose-400">⚠ {error}</div>}
-          <div ref={bottomRef} />
-        </div>
-        <form
-          className="flex gap-2 border-t border-cyan-400/20 p-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            send();
-          }}
-        >
-          <input
-            className="flex-1 rounded-md bg-black/40 px-3 py-2 outline-none ring-1 ring-cyan-400/30 focus:ring-cyan-300"
-            placeholder={
-              mode === "onboarding"
-                ? "예: 다혜님이라고 불러줘, 컴퓨터정보과 2학년 2학기야"
-                : "예: 오늘 일정 알려줘 / 금요일까지 자료구조 과제 추가해줘"
-            }
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-          />
-          <button
-            type="button"
-            onClick={toggleMic}
-            disabled={core === "THINKING" || mode === "loading"}
-            className={`btn ${core === "LISTENING" ? "btn-rec" : "btn-no"}`}
-            aria-label={core === "LISTENING" ? "듣기 멈추기" : "음성으로 말하기"}
-            title={core === "LISTENING" ? "듣기 멈추기" : "음성으로 말하기"}
+              <button onClick={() => setGoogleNote(null)} aria-label="닫기">
+                ✕
+              </button>
+            </span>
+          </div>
+        )}
+
+        {mode === "main" && pending.length > 0 && (
+          <section className="glass glass-alert p-4">
+            <h2 className="mb-2 font-mono text-[11px] tracking-widest text-amber-300">APPROVAL // {pending.length}</h2>
+            <ul className="space-y-2">
+              {pending.map((a) => (
+                <li key={a.id} className="flex flex-col gap-2 text-sm">
+                  {a.kind === "save_memory" ? (
+                    <span>
+                      <span className="mr-1 text-violet-300">💭 기억해도 될까요?</span>
+                      {a.summary.replace(/^기억 · [^:]+:\s*/, "")}
+                    </span>
+                  ) : (
+                    <span>{a.summary}</span>
+                  )}
+                  <span className="flex justify-end gap-2">
+                    <button onClick={() => decide(a.id, true)} className="btn btn-ok">
+                      {a.kind === "save_memory" ? "기억하기" : "승인"}
+                    </button>
+                    <button onClick={() => decide(a.id, false)} className="btn btn-no">
+                      {a.kind === "save_memory" ? "아니요" : "취소"}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section className="glass flex min-h-[320px] flex-1 flex-col lg:min-h-0" aria-label="대화 기록">
+          <div className="px-4 pt-3 font-mono text-[11px] tracking-widest text-cyan-300/80">COMMS // 대화</div>
+          <div ref={chatScrollRef} className="hud-scroll flex-1 space-y-3 overflow-y-auto p-4 max-lg:max-h-[50vh]">
+            {turns.map((t, i) => (
+              <div key={i} className={t.role === "user" ? "text-right" : ""}>
+                <div className={`bubble ${t.role === "user" ? "bubble-user" : "bubble-ai"}`}>
+                  <Linkify text={t.text} />
+                </div>
+                {t.notices && t.notices.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {t.notices.map((n) => (
+                      <li key={n.id}>
+                        <a
+                          href={n.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-md border border-cyan-400/20 px-3 py-1.5 text-xs hover:border-cyan-300"
+                        >
+                          <span className="text-cyan-300">[{n.category}]</span> {n.title}
+                          {n.structured_data?.application_end && (
+                            <span className="ml-1 text-amber-300">· 마감 {n.structured_data.application_end}</span>
+                          )}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+            {core === "THINKING" && <div className="font-mono text-xs text-cyan-300/70">NARVIS 분석 중…</div>}
+            {hint && <div className="text-sm text-amber-300/80">{hint}</div>}
+            {error && <div className="text-sm text-rose-400">⚠ {error}</div>}
+          </div>
+          <form
+            className="flex gap-2 border-t border-cyan-400/15 p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              send();
+            }}
           >
-            {core === "LISTENING" ? "■" : "🎤"}
-          </button>
-          <button className="btn btn-ok" disabled={core === "THINKING" || mode === "loading"}>전송</button>
-        </form>
-      </section>
+            <input
+              className="min-w-0 flex-1 rounded-md bg-black/30 px-3 py-2 text-sm outline-none ring-1 ring-cyan-400/25 focus:ring-cyan-300"
+              placeholder={mode === "onboarding" ? "예: 다혜님이라고 불러줘, 컴퓨터정보과야" : "예: 오늘 일정 알려줘"}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              aria-label="메시지"
+            />
+            <button className="btn btn-ok" disabled={core === "THINKING" || mode === "loading"}>
+              전송
+            </button>
+          </form>
+        </section>
+      </aside>
+
+      {/* ── Focus Mode: 패널이 가운데로 ── */}
+      {focus && mode === "main" && (
+        <FocusLayer
+          key={focus.id}
+          title={FOCUS_TITLE[focus.id]}
+          getSource={() => (focus.id === "memory" ? memoryBtnRef.current : (panelRefs.current[focus.id] ?? null))}
+          closing={focus.closing}
+          onClose={closeFocus}
+          onClosed={() => setFocus(null)}
+          onHoverChange={setFocusHover}
+        >
+          {renderPanel(focus.id, true)}
+        </FocusLayer>
+      )}
     </main>
   );
 }

@@ -141,6 +141,8 @@ export async function confirmOnboarding(userId: string) {
     );
   }
 
+  // 프로필·시간표가 바뀌었으니 오늘 만들어 둔 브리핑은 버리고 새로 만들게
+  must(await db().from("briefings").delete().eq("user_id", userId));
   await save(userId, "done", draft);
   return { ok: true as const, message: `설정 완료! 앞으로 ${draft.boss_title}${josaRago(draft.boss_title!)} 부를게요.` };
 }

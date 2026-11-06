@@ -51,7 +51,7 @@ export default function CalibrationPanel({
   );
 
   return (
-    <section className={`glass w-full max-w-3xl p-4 ${ob.step === "confirm" ? "ring-1 ring-cyan-300" : ""}`}>
+    <section className={`glass w-full p-4 ${ob.step === "confirm" ? "ring-1 ring-cyan-300" : ""}`}>
       <div className="mb-3 flex items-center justify-between font-mono text-xs tracking-widest">
         <span className="text-cyan-300">
           {ob.step === "confirm" ? "CALIBRATION // 확인해 주세요" : "CALIBRATION // 프로필 설정 중"}
@@ -62,7 +62,7 @@ export default function CalibrationPanel({
         <div className="h-full bg-cyan-300 transition-all duration-500" style={{ width: `${pct}%` }} />
       </div>
 
-      <div className="grid gap-x-6 sm:grid-cols-2">
+      <div className="grid gap-x-6">
         <div>
           <Row label="호칭" value={d.boss_title} />
           <Row label="학과" value={d.department} />
@@ -77,7 +77,7 @@ export default function CalibrationPanel({
       </div>
 
       {classes.length > 0 && (
-        <ul className="mt-3 grid gap-1 text-xs sm:grid-cols-2">
+        <ul className="mt-3 grid gap-1 text-xs">
           {classes.map((c, i) => (
             <li key={i} className="rounded border border-cyan-400/15 px-2 py-1">
               <span className="text-cyan-300">{DAYS[c.day_of_week]}</span> {c.start_time}–{c.end_time} {c.subject_name}
@@ -89,7 +89,7 @@ export default function CalibrationPanel({
 
       {ob.step === "confirm" && (
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-          <span className="mr-auto text-xs text-cyan-100/60">이대로 저장할까요? (기존 예시 시간표는 지워져요)</span>
+          <span className="mr-auto text-xs text-cyan-100/60">이대로 저장할까요? 시간표는 이 내용으로 바뀌어요.</span>
           <button className="btn btn-no" disabled={busy} onClick={() => onAction("edit")}>
             계속 수정
           </button>

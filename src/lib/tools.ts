@@ -6,6 +6,7 @@
 import * as z from "zod/v4";
 import {
   createPendingAction,
+  completeAssignmentByName,
   getScheduleForDate,
   listAssignments,
   todayKST,
@@ -129,6 +130,19 @@ export function makeTools(
       run: async (input) => {
         await setBriefingPrefs(userId, input);
         return `설정 완료: ${input.briefing_time ? `브리핑 시간 ${input.briefing_time}` : ""}${input.enabled === false ? " 브리핑 끔" : input.enabled ? " 브리핑 켬" : ""}`;
+      },
+    }),
+
+    tool({
+      name: "complete_assignment",
+      description:
+        "Boss가 과제를 끝냈다고 하면('자료구조 과제 다 했어') 완료로 표시합니다. 화면에서 언제든 되돌릴 수 있어서 승인 없이 바로 반영돼요. 후보가 여러 개면 어느 건지 물어보세요.",
+      schema: z.object({ query: z.string().min(1).max(100).describe("과목명이나 과제 제목에 들어간 단어 (예: '자료구조', '연결 리스트')") }),
+      run: async ({ query }) => {
+        const r = await completeAssignmentByName(userId, query);
+        if (r.done) return `완료로 표시했어요: ${r.done.subject_name} · ${r.done.title}`;
+        if (r.candidates.length === 0) return "남은 과제가 없어요.";
+        return `어느 과제인지 애매해요. 후보: ${r.candidates.map((a) => `${a.subject_name} · ${a.title}`).join(" / ")}`;
       },
     }),
 

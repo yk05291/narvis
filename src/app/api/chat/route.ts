@@ -10,6 +10,18 @@ const USER_ID = "local-boss";
 
 type ChatTurn = { role: "user" | "assistant"; text: string };
 
+// 답할 때 쓴 도구 → 화면 가운데로 꺼낼 패널 (Focus Mode). 마지막에 쓴 것 우선.
+const FOCUS_BY_TOOL: Record<string, "briefing" | "schedule" | "study" | "notices" | "memory"> = {
+  get_morning_briefing: "briefing",
+  get_today_schedule: "schedule",
+  propose_add_calendar_event: "schedule",
+  list_assignments: "study",
+  complete_assignment: "study",
+  propose_add_assignment: "study",
+  search_school_notices: "notices",
+  forget_memory: "memory",
+};
+
 // AI가 요일 계산을 틀리지 않도록: 이번 주 월요일부터 3주치 날짜+요일 표 (주 단위로 이름표)
 function calendarTable() {
   const days = ["일", "월", "화", "수", "목", "금", "토"];
@@ -45,6 +57,7 @@ export async function POST(req: Request) {
   const pending: PendingAction[] = [];
   const notices: NoticeRow[] = [];
   const out: { briefing?: string } = {};
+  const used: string[] = [];
 
   const about = [
     profile.department && `학과: ${profile.department}`,
@@ -79,10 +92,13 @@ ${memoriesForPrompt(memories)}
       system,
       turns.map((t) => ({ role: t.role, content: t.text })),
       makeTools(USER_ID, pending, notices, out),
+      6,
+      used,
     );
+    const focus = [...used].reverse().map((t) => FOCUS_BY_TOOL[t]).find(Boolean) ?? null;
     // 브리핑을 요청했으면 AI가 바꿔 말한 문장 대신, 데이터로 만든 브리핑 문장을 그대로
     const finalReply = out.briefing ?? reply;
-    return Response.json({ reply: finalReply || "(응답 없음)", pending, notices: notices.slice(0, 8) });
+    return Response.json({ reply: finalReply || "(응답 없음)", pending, notices: notices.slice(0, 8), focus });
   } catch (err) {
     if (err instanceof GroqError) {
       const msg =
