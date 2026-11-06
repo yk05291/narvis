@@ -7,6 +7,7 @@ import { db, must } from "./db";
 import { callGroq } from "./groq";
 import { getProfile, getScheduleForDate, todayKST, type Profile } from "./store";
 import { searchNotices } from "./extract";
+import { listAcademicEvents } from "./academic";
 
 const DAY = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -17,6 +18,7 @@ export type Briefing = {
   greeting_name: string;
   classes: BriefingItem[];
   events: BriefingItem[];
+  academic?: BriefingItem[]; // 학교 학사일정: 오늘 진행 중 + 7일 안
   deadlines: BriefingItem[]; // 3일 안에 마감인 과제
   new_notices: BriefingItem[]; // 최근 2일 새 공지
   closing_notices: BriefingItem[]; // 7일 안에 신청 마감인 공지
@@ -100,6 +102,17 @@ async function gather(userId: string, date: string, profile: Profile): Promise<O
       return { time: left === 0 ? "오늘 마감" : `D-${left}`, title: n.title, link: n.source_url };
     });
 
+  // 학사일정: 오늘 진행 중이거나 7일 안에 시작
+  const acad = await listAcademicEvents({ from: date, to: addDays(date, 7), limit: 6 }).catch(() => []);
+  const academic = acad.map((e) => {
+    const left = Math.round((Date.parse(e.start_date) - Date.parse(date)) / 86400000);
+    return {
+      time: left <= 0 ? (e.end_date > date ? `~${Number(e.end_date.slice(5, 7))}/${Number(e.end_date.slice(8))}` : "오늘") : `D-${left}`,
+      title: e.title,
+      sub: e.category,
+    };
+  });
+
   // 출발 권장 시각: 첫 수업 - 통학 - 10분 여유
   let leave_by: string | null = null;
   const first = schedule.classes[0];
@@ -116,6 +129,7 @@ async function gather(userId: string, date: string, profile: Profile): Promise<O
     greeting_name: profile.boss_title || "Boss",
     classes,
     events,
+    academic,
     deadlines,
     new_notices,
     closing_notices,
@@ -132,6 +146,7 @@ function templateText(b: Omit<Briefing, "spoken" | "spoken_by">) {
     if (b.leave_by) parts.push(`통학 시간을 생각하면 ${b.leave_by}까지는 출발하는 게 좋아요.`);
   } else parts.push("오늘은 수업이 없어요.");
   if (b.events.length) parts.push(`일정은 ${b.events.map((e) => `${e.time} ${e.title}`).join(", ")}이 있어요.`);
+  if (b.academic?.length) parts.push(`이번 주 학사일정: ${b.academic.map((a) => `${a.title}(${a.time})`).join(", ")}.`);
   if (b.deadlines.length) parts.push(`곧 마감인 과제가 ${b.deadlines.length}개 있어요: ${b.deadlines.map((x) => x.title).join(", ")}.`);
   if (b.closing_notices.length) parts.push(`신청 마감이 다가오는 학교 공지가 ${b.closing_notices.length}개 있어요.`);
   if (b.new_notices.length) parts.push(`새 학교 공지도 ${b.new_notices.length}개 올라왔어요.`);
@@ -147,7 +162,7 @@ async function aiText(b: Omit<Briefing, "spoken" | "spoken_by">) {
         content: `너는 개인 비서 NARVIS야. 아래 JSON만 보고 ${b.greeting_name}에게 들려줄 아침 브리핑을 써.
 - 한국어 존댓말, 4~6문장, 소리로 읽기 좋게. 마크다운·목록·이모지·링크 금지.
 - 첫 문장은 인사와 날짜(${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 ${DAY[d.getUTCDay()]}요일).
-- 수업, 일정, 출발 시각(leave_by), 곧 마감인 과제, 마감 다가오는 공지, 새 공지 순서로 중요한 것만. 비어 있는 항목은 말하지 마.
+- 수업, 일정, 출발 시각(leave_by), 학사일정(academic: 학교 공식 일정, D-n은 n일 뒤 시작), 곧 마감인 과제, 마감 다가오는 공지, 새 공지 순서로 중요한 것만. 비어 있는 항목은 말하지 마.
 - JSON에 없는 내용은 절대 지어내지 마. 시간은 "오전 9시", "오후 1시 반"처럼 읽기 쉽게.`,
       },
       { role: "user", content: JSON.stringify({ ...b, generated_at: undefined }) },

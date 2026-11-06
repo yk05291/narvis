@@ -16,6 +16,7 @@ import { searchNotices, type NoticeRow } from "./extract";
 import { getBriefing, setBriefingPrefs } from "./briefing";
 import { forgetMemory } from "./memories";
 import { CATEGORY_KO, findGoal, listGoals, updateGoal } from "./goals";
+import { listAcademicEvents, withDow } from "./academic";
 
 export type Tool = {
   name: string;
@@ -144,6 +145,29 @@ export function makeTools(
         if (r.done) return `완료로 표시했어요: ${r.done.subject_name} · ${r.done.title}`;
         if (r.candidates.length === 0) return "남은 과제가 없어요.";
         return `어느 과제인지 애매해요. 후보: ${r.candidates.map((a) => `${a.subject_name} · ${a.title}`).join(" / ")}`;
+      },
+    }),
+
+    tool({
+      name: "get_academic_calendar",
+      description:
+        "한양여대 공식 학사일정(학교 홈페이지 공개 데이터)을 DB에서 가져옵니다. '학사일정 알려줘', '종강 언제야?', '수강신청 언제야?', '이번 달 학사일정' 같은 질문에 사용. 기간을 안 주면 오늘부터 앞으로의 일정.",
+      schema: z.object({
+        from: isoDate.nullish().describe("시작 날짜 (기본: 오늘)"),
+        to: isoDate.nullish().describe("끝 날짜 (예: 이번 달 말일). 키워드로 찾을 땐 비워두기"),
+        keyword: z.string().max(30).nullish().describe("일정 이름 단어 (예: 종강, 수강신청, 기말, 복학, 졸업)"),
+      }),
+      run: async ({ from, to, keyword }) => {
+        // 키워드로 찾을 땐 올해 전체(1·2학기 모두)에서 찾아요. 제목의 '2026-1'은 1학기, '2026-2'는 2학기.
+        const start = from ?? (keyword ? `${todayKST().slice(0, 4)}-01-01` : undefined);
+        const rows = await listAcademicEvents({ from: start, to: to ?? undefined, keyword, limit: 20 });
+        if (rows.length === 0) return "학사일정에서 찾지 못했어요. 지어내지 말고 '학교 학사일정에 없어요'라고 답하세요.";
+        return JSON.stringify({
+          source: "한양여대 홈페이지 학사일정",
+          note: "날짜 옆 (요일)은 정확한 값이니 그대로 쓰세요. 제목의 2026-1=1학기, 2026-2=2학기. 오늘보다 앞이면 이미 지난 일정.",
+          today: withDow(todayKST()),
+          events: rows.map((e) => ({ title: e.title, start: withDow(e.start_date), end: withDow(e.end_date), type: e.category })),
+        });
       },
     }),
 

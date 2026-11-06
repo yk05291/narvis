@@ -4,6 +4,7 @@ import { db, must } from "./db";
 import { createGoogleEvent, listGoogleEvents, type GoogleEvent } from "./google";
 import { saveMemory } from "./memories";
 import { createGoal, type GoalCategory } from "./goals";
+import { academicEventsOn } from "./academic";
 
 export type TimetableItem = {
   id: string;
@@ -102,10 +103,11 @@ export async function getScheduleForDate(userId: string, isoDate: string) {
     console.error("google list", e);
     return "error" as const;
   });
-  const [classes, events, due] = await Promise.all([
+  const [classes, events, due, academic] = await Promise.all([
     db().from("timetables").select("*").eq("user_id", userId).eq("day_of_week", dayOfWeek(isoDate)).order("start_time"),
     db().from("calendar_events").select("*").eq("user_id", userId).gte("start_time", start).lt("start_time", end).order("start_time"),
     db().from("assignments").select("*").eq("user_id", userId).eq("is_completed", false).gte("due_date", start).lt("due_date", end),
+    academicEventsOn(isoDate).catch(() => []),
   ]);
   const g = await google;
   return {
@@ -115,6 +117,7 @@ export async function getScheduleForDate(userId: string, isoDate: string) {
     google_events: (Array.isArray(g) ? g : []) as GoogleEvent[],
     google_status: g === null ? "not_connected" : g === "error" ? "error" : "ok",
     assignments_due: must(due) as Assignment[],
+    academic_events: academic, // 학교 학사일정 (그날 진행 중인 것 포함)
   };
 }
 

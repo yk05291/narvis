@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { cachedJson, fetchJson } from "@/lib/clientCache";
 
-type Item = { time: string; end?: string; title: string; kind: "수업" | "구글" | "일정" | "마감"; sub?: string | null; link?: string | null };
+type Item = { time: string; end?: string; title: string; kind: "수업" | "구글" | "일정" | "마감" | "학사"; sub?: string | null; link?: string | null };
 type Schedule = {
   date: string;
   classes: { subject_name: string; start_time: string; end_time: string; classroom: string | null }[];
@@ -12,6 +12,7 @@ type Schedule = {
   google_events: { title: string; start_time: string; end_time: string; all_day: boolean; location: string | null; link: string | null }[];
   google_status: "ok" | "not_connected" | "error";
   assignments_due: { subject_name: string; title: string; due_date: string }[];
+  academic_events?: { title: string; start_date: string; end_date: string; category: string }[];
   google: { configured: boolean; connected: boolean; email: string | null };
 };
 
@@ -23,6 +24,7 @@ const KIND_STYLE: Record<Item["kind"], string> = {
   구글: "text-emerald-300 bg-emerald-400/10",
   일정: "text-violet-300 bg-violet-400/10",
   마감: "text-amber-300 bg-amber-400/10",
+  학사: "text-sky-300 bg-sky-400/10",
 };
 
 function toItems(s: Schedule): Item[] {
@@ -38,6 +40,12 @@ function toItems(s: Schedule): Item[] {
     })),
     ...s.events.map((e) => ({ time: hm(e.start_time), end: hm(e.end_time), title: e.title, kind: "일정" as const, sub: e.location })),
     ...s.assignments_due.map((a) => ({ time: hm(a.due_date), title: `${a.subject_name} · ${a.title}`, kind: "마감" as const })),
+    ...(s.academic_events ?? []).map((e) => ({
+      time: "종일",
+      title: e.title,
+      kind: "학사" as const,
+      sub: e.start_date !== e.end_date ? `~${Number(e.end_date.slice(5, 7))}/${Number(e.end_date.slice(8))}` : null,
+    })),
   ];
   // "종일"이 맨 위, 나머지는 시간순
   return items.sort((a, b) => (a.time === "종일" ? -1 : b.time === "종일" ? 1 : a.time.localeCompare(b.time)));

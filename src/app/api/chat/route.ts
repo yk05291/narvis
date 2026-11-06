@@ -6,6 +6,7 @@ import { nowContext } from "@/lib/time";
 import type { NoticeRow } from "@/lib/extract";
 import { listMemories, memoriesForPrompt } from "@/lib/memories";
 import { goalsForPrompt, listGoals } from "@/lib/goals";
+import { answerAcademicQuestion } from "@/lib/academic-answer";
 
 // 1단계: 로그인 기능이 없으니 사용자 한 명으로 고정. (나중에 Supabase 로그인으로 교체)
 const USER_ID = "local-boss";
@@ -13,9 +14,10 @@ const USER_ID = "local-boss";
 type ChatTurn = { role: "user" | "assistant"; text: string };
 
 // 답할 때 쓴 도구 → 화면 가운데로 꺼낼 패널 (Focus Mode). 마지막에 쓴 것 우선.
-const FOCUS_BY_TOOL: Record<string, "briefing" | "schedule" | "study" | "notices" | "memory" | "goals"> = {
+const FOCUS_BY_TOOL: Record<string, "briefing" | "schedule" | "study" | "notices" | "memory" | "goals" | "academic"> = {
   get_morning_briefing: "briefing",
   get_today_schedule: "schedule",
+  get_academic_calendar: "academic",
   propose_add_calendar_event: "schedule",
   list_assignments: "study",
   complete_assignment: "study",
@@ -44,6 +46,15 @@ export async function POST(req: Request) {
   }
 
   const [profile, memories, goals] = await Promise.all([getProfile(USER_ID), listMemories(USER_ID), listGoals(USER_ID)]);
+
+  // 학사일정 질문은 AI 없이 DB에서 바로 정확하게 (AI 사용량도 0)
+  const lastUser = [...turns].reverse().find((t) => t.role === "user")?.text ?? "";
+  try {
+    const academic = await answerAcademicQuestion(lastUser, profile.boss_title || "Boss");
+    if (academic) return Response.json({ reply: academic, pending: [], notices: [], focus: "academic" });
+  } catch (e) {
+    console.error("academic answer failed, falling back to AI", e);
+  }
   const pending: PendingAction[] = [];
   const notices: NoticeRow[] = [];
   const out: { briefing?: string } = {};
@@ -79,6 +90,7 @@ ${memoriesForPrompt(memories)}
 ${goalsForPrompt(goals)}
 - 새 목표를 세우고 싶어 하면 propose_add_goal, 진행 상황을 말하면 update_goal.
 - "잊어줘/지워줘"라고 하면 되묻지 말고 바로 forget_memory 를 호출하고, 결과대로 "잊었어요"라고 말해.
+- 학사일정(개강·종강·시험·수강신청·방학·성적 등)은 get_academic_calendar 로 확인해서 날짜와 함께 알려줘. get_today_schedule 결과의 academic_events 도 학사일정이야.
 - 학교 일정·공지·제도·마감 같은 사실은 도구로 확인한 것만 말해. 확인 안 된 건 지어내지 말고 "확인해 볼까요?"라고 물어봐. 묻지 않은 추가 정보는 덧붙이지 마.
 - 날짜나 시간이 애매하면 먼저 물어봐.`;
 

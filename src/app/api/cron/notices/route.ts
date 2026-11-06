@@ -3,6 +3,7 @@
 import { crawlNotices } from "@/lib/hywu";
 import { extractPendingNotices } from "@/lib/extract";
 import { db } from "@/lib/db";
+import { crawlAcademicCalendar } from "@/lib/academic";
 
 export const maxDuration = 300; // 최대 5분
 
@@ -25,8 +26,17 @@ export async function GET(req: Request) {
       errors.push(`수집 실패: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  // 학사일정 (올해 + 내년)
+  let academic: Awaited<ReturnType<typeof crawlAcademicCalendar>> | null = null;
+  if (!skipCrawl) {
+    try {
+      academic = await crawlAcademicCalendar();
+    } catch (e) {
+      errors.push(`학사일정 수집 실패: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   const extract = await extractPendingNotices(Number(url.searchParams.get("limit") ?? 6));
-  errors.push(...crawl.errors, ...extract.errors);
+  errors.push(...crawl.errors, ...(academic?.errors ?? []), ...extract.errors);
 
   if (run.data) {
     await db()
@@ -46,6 +56,7 @@ export async function GET(req: Request) {
     updated: crawl.updated_count,
     extracted: extract.extracted_count,
     remaining_to_extract: extract.remaining,
+    academic: academic && { years: academic.years, new: academic.new_count, removed: academic.removed_count },
     errors,
   });
 }

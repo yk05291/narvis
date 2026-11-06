@@ -6,6 +6,7 @@ import { runAgent, GroqError } from "@/lib/groq";
 import { makeOnboardingTools } from "@/lib/onboarding-tools";
 import { getOnboarding, missingFields } from "@/lib/onboarding";
 import { nowContext } from "@/lib/time";
+import { answerAcademicQuestion } from "@/lib/academic-answer";
 
 const USER_ID = "local-boss";
 type ChatTurn = { role: "user" | "assistant"; text: string };
@@ -35,6 +36,15 @@ export async function POST(req: Request) {
   }
 
   const before = await status();
+
+  // 설정 중에도 학사일정 질문엔 바로 답해요 (DB에서 정확하게, 설정 내용은 안 건드림)
+  const lastUser = [...turns].reverse().find((t) => t.role === "user")?.text ?? "";
+  try {
+    const academic = await answerAcademicQuestion(lastUser, before.draft.boss_title || "Boss");
+    if (academic) return Response.json({ reply: `${academic}\n\n이어서 설정을 마저 할까요?`, ...before });
+  } catch (e) {
+    console.error("academic answer failed", e);
+  }
   const system = `${nowContext()}
 
 너는 NARVIS, 한양여자대학교 학생의 개인 AI 비서야. 지금은 처음 만나서 '워크스페이스 보정(calibration)' 중이야.

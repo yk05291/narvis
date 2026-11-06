@@ -10,6 +10,7 @@ type Briefing = {
   generated_at: string;
   classes: Item[];
   events: Item[];
+  academic?: Item[];
   deadlines: Item[];
   new_notices: Item[];
   closing_notices: Item[];
@@ -125,7 +126,8 @@ export default function BriefingCard({
   const madeAt = new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false }).format(
     new Date(b.generated_at),
   );
-  const empty = !b.classes.length && !b.events.length && !b.deadlines.length && !b.new_notices.length && !b.closing_notices.length;
+  const empty =
+    !b.classes.length && !b.events.length && !b.academic?.length && !b.deadlines.length && !b.new_notices.length && !b.closing_notices.length;
 
   if (compact) {
     return (
@@ -182,6 +184,7 @@ export default function BriefingCard({
         <div className="grid gap-4 sm:grid-cols-2">
           <Section title="수업" items={b.classes} accent="text-cyan-300" />
           <Section title="일정" items={b.events} accent="text-emerald-300" />
+          <Section title="학사일정 (7일 안)" items={b.academic ?? []} accent="text-sky-300" />
           <Section title="곧 마감인 과제" items={b.deadlines} accent="text-amber-300" />
           <Section title="신청 마감 다가오는 공지" items={b.closing_notices} accent="text-amber-300" />
           <Section title="새 학교 공지" items={b.new_notices} accent="text-violet-300" />

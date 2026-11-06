@@ -6,8 +6,8 @@ import "server-only";
 import { createHash } from "crypto";
 import { db, must } from "./db";
 
-const BASE = "https://www.hywoman.ac.kr";
-const UA = "Mozilla/5.0 (compatible; NARVIS-student-assistant/0.2; personal project)";
+export const BASE = "https://www.hywoman.ac.kr";
+export const UA = "Mozilla/5.0 (compatible; NARVIS-student-assistant/0.2; personal project)";
 const DELAY_MS = 3000;
 
 // 대학공지 > 공지 게시판들 (2026-11 홈페이지 구조 기준)
@@ -25,7 +25,7 @@ type Board = (typeof BOARDS)[number];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- 세션 쿠키 받기 (리다이렉트를 직접 따라가며 쿠키 모으기) ----------
-async function getSessionCookie(): Promise<string> {
+export async function getSessionCookie(): Promise<string> {
   const jar = new Map<string, string>();
   let url = `${BASE}/ko/index.do`;
   for (let hop = 0; hop < 8; hop++) {
