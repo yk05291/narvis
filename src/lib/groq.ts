@@ -138,6 +138,9 @@ export async function runAgent(
           result = "오류: 도구 실행 중 문제가 생겼어요.";
         }
       }
+      // 어떤 도구를 썼는지 기록 (입력 내용은 개인정보일 수 있어서 개발 모드에서만)
+      if (process.env.NODE_ENV !== "production") console.log(`tool ${call.function.name} ${call.function.arguments} → ${result.slice(0, 80)}`);
+      else console.log(`tool ${call.function.name}`);
       messages.push({ role: "tool", tool_call_id: call.id, content: result });
     }
   }

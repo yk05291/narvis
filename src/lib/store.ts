@@ -2,6 +2,7 @@
 import "server-only";
 import { db, must } from "./db";
 import { createGoogleEvent, listGoogleEvents, type GoogleEvent } from "./google";
+import { saveMemory } from "./memories";
 
 export type TimetableItem = {
   id: string;
@@ -43,6 +44,12 @@ export type PendingAction =
       kind: "add_calendar_event";
       summary: string;
       data: { title: string; start_time: string; end_time: string; location?: string | null };
+    }
+  | {
+      id: string;
+      kind: "save_memory";
+      summary: string;
+      data: { key: string; value: string };
     };
 
 // ---------- 날짜 도우미 (한국 시간 기준) ----------
@@ -144,7 +151,17 @@ export async function resolvePendingAction(userId: string, actionId: string, app
   ) as PendingAction[];
   const action = rows[0];
   if (!action) return { ok: false as const, message: "이미 처리됐거나 없는 요청이에요." };
-  if (!approve) return { ok: true as const, message: `취소했어요: ${action.summary}` };
+  if (!approve) {
+    return {
+      ok: true as const,
+      message: action.kind === "save_memory" ? "알겠어요, 기억하지 않을게요." : `취소했어요: ${action.summary}`,
+    };
+  }
+
+  if (action.kind === "save_memory") {
+    await saveMemory(userId, action.data.key, action.data.value);
+    return { ok: true as const, message: `기억했어요: ${action.data.value}` };
+  }
 
   if (action.kind === "add_assignment") {
     must(await db().from("assignments").insert({ user_id: userId, ...action.data }));

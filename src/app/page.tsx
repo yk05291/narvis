@@ -5,6 +5,7 @@ import CalibrationPanel, { type Onboarding } from "./CalibrationPanel";
 import TodayPanel, { GOOGLE_MSG } from "./TodayPanel";
 import AICore from "./AICore";
 import BriefingCard from "./BriefingCard";
+import MemoryPanel from "./MemoryPanel";
 import type { CoreState } from "@/lib/voice/level";
 import { startRecording, transcribe, type Recording } from "@/lib/voice/recorder";
 import { speak, stopSpeaking, ttsSupported } from "@/lib/voice/speaker";
@@ -55,6 +56,7 @@ export default function Home() {
   const [ob, setOb] = useState<Onboarding | null>(null);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [scheduleKey, setScheduleKey] = useState(0);
+  const [showMemory, setShowMemory] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
   const [hint, setHint] = useState<string | null>(null);
   const recRef = useRef<Recording | null>(null);
@@ -257,8 +259,13 @@ export default function Home() {
   return (
     <main className="hud-bg flex min-h-screen flex-col items-center gap-6 px-4 py-8 text-cyan-50">
       <header className="flex w-full max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-2 whitespace-nowrap font-mono text-xs tracking-[0.12em] text-cyan-300/70 sm:tracking-[0.3em]">
-        <span>NARVIS // v0.6</span>
+        <span>NARVIS // v0.7</span>
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {mode === "main" && (
+            <button onClick={() => setShowMemory((v) => !v)} className={showMemory ? "text-violet-300" : "hover:text-cyan-300"} aria-pressed={showMemory}>
+              기억
+            </button>
+          )}
           {mode === "main" && (
             <button onClick={() => onboardingAction("restart")} className="hover:text-cyan-300" disabled={core === "THINKING"}>
               프로필 설정
@@ -325,6 +332,8 @@ export default function Home() {
         />
       )}
 
+      {mode === "main" && showMemory && <MemoryPanel refreshKey={scheduleKey} onClose={() => setShowMemory(false)} />}
+
       {mode === "main" && <TodayPanel refreshKey={scheduleKey} />}
 
       {mode === "main" && pending.length > 0 && (
@@ -333,15 +342,28 @@ export default function Home() {
             승인 대기 중 ({pending.length})
           </h2>
           <ul className="space-y-2">
-            {pending.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span>{a.summary}</span>
-                <span className="flex gap-2">
-                  <button onClick={() => decide(a.id, true)} className="btn btn-ok">승인</button>
-                  <button onClick={() => decide(a.id, false)} className="btn btn-no">취소</button>
-                </span>
-              </li>
-            ))}
+            {pending.map((a) =>
+              a.kind === "save_memory" ? (
+                <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span>
+                    <span className="mr-1 text-violet-300">💭 기억해도 될까요?</span>
+                    {a.summary.replace(/^기억 · [^:]+:\s*/, "")}
+                  </span>
+                  <span className="flex gap-2">
+                    <button onClick={() => decide(a.id, true)} className="btn btn-ok">기억하기</button>
+                    <button onClick={() => decide(a.id, false)} className="btn btn-no">아니요</button>
+                  </span>
+                </li>
+              ) : (
+                <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span>{a.summary}</span>
+                  <span className="flex gap-2">
+                    <button onClick={() => decide(a.id, true)} className="btn btn-ok">승인</button>
+                    <button onClick={() => decide(a.id, false)} className="btn btn-no">취소</button>
+                  </span>
+                </li>
+              ),
+            )}
           </ul>
         </section>
       )}

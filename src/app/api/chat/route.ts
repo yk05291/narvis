@@ -3,6 +3,7 @@ import { makeTools } from "@/lib/tools";
 import { runAgent, GroqError } from "@/lib/groq";
 import { getProfile, todayKST, type PendingAction } from "@/lib/store";
 import type { NoticeRow } from "@/lib/extract";
+import { listMemories, memoriesForPrompt } from "@/lib/memories";
 
 // 1단계: 로그인 기능이 없으니 사용자 한 명으로 고정. (나중에 Supabase 로그인으로 교체)
 const USER_ID = "local-boss";
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const profile = await getProfile(USER_ID);
+  const [profile, memories] = await Promise.all([getProfile(USER_ID), listMemories(USER_ID)]);
   const pending: PendingAction[] = [];
   const notices: NoticeRow[] = [];
   const out: { briefing?: string } = {};
@@ -67,6 +68,10 @@ ${calendarTable()}
 - 학교 공지(장학금, 수강, 휴학·복학, 등록, 현장실습, 취업 등) 질문에는 search_school_notices 로 찾아보고 마감일을 함께 알려줘. 링크는 화면에 카드로 자동으로 붙으니 절대 직접 쓰지 마.
 - 과제·일정을 추가할 때는 propose_* 도구만 쓸 수 있어. 그건 "제안"일 뿐이고, ${profile.boss_title}가 화면의 승인 버튼을 눌러야 저장된다고 꼭 알려줘. 절대 "저장했다"고 말하지 마.
 - "브리핑 해줘", "오늘 하루 정리해줘"면 get_morning_briefing 결과의 spoken 문장을 거의 그대로 전해줘. 브리핑 시간 변경 요청은 set_briefing_preferences.
+- ${profile.boss_title}가 동의해서 기억하고 있는 것 (추천·조언할 때 자연스럽게 반영해. 단, 매번 "기억하고 있어요"라고 티 내지는 마):
+${memoriesForPrompt(memories)}
+- ${profile.boss_title}가 오래 유효한 취향·사정을 말하면 propose_memory 로 기억을 제안할 수 있어 (한 대화에 최대 1개). 제안했으면 "기억해도 될지 화면에서 골라주세요"라고 짧게 말해. 저장됐다고 말하지 마. 이미 기억 목록에 같은 내용이 있으면 제안하지 마.
+- "잊어줘/지워줘"라고 하면 되묻지 말고 바로 forget_memory 를 호출하고, 결과대로 "잊었어요"라고 말해.
 - 날짜나 시간이 애매하면 먼저 물어봐.`;
 
   try {

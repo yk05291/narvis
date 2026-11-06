@@ -13,6 +13,7 @@ import {
 } from "./store";
 import { searchNotices, type NoticeRow } from "./extract";
 import { getBriefing, setBriefingPrefs } from "./briefing";
+import { forgetMemory } from "./memories";
 
 export type Tool = {
   name: string;
@@ -128,6 +129,37 @@ export function makeTools(
       run: async (input) => {
         await setBriefingPrefs(userId, input);
         return `설정 완료: ${input.briefing_time ? `브리핑 시간 ${input.briefing_time}` : ""}${input.enabled === false ? " 브리핑 끔" : input.enabled ? " 브리핑 켬" : ""}`;
+      },
+    }),
+
+    tool({
+      name: "propose_memory",
+      description:
+        "Boss가 말한 '오래 유효한' 개인 정보·취향을 기억하자고 '제안'합니다 (예: 매운 음식 못 먹음, 화·목 저녁 알바). Boss가 화면에서 '기억하기'를 눌러야 저장돼요. 한 번 쓰고 말 정보(오늘 기분, 오늘 점심 메뉴)나 민감한 정보(건강 상세, 비밀번호, 계좌, 주민번호)는 Boss가 직접 기억해달라고 하지 않으면 제안하지 마세요.",
+      schema: z.object({
+        key: z.string().min(1).max(40).describe("짧은 이름표 (예: 음식 취향, 아르바이트). 같은 이름표면 내용이 바뀐 걸로 덮어써요"),
+        value: z.string().min(1).max(200).describe("기억할 내용 한 문장 (예: 매운 음식을 못 먹음)"),
+      }),
+      run: async ({ key, value }) => {
+        if (pendingSink.some((p) => p.kind === "save_memory")) return "이번 대화에서는 이미 하나 제안했어요. 한 번에 하나만.";
+        const action = await createPendingAction(userId, {
+          kind: "save_memory",
+          summary: `기억 · ${key}: ${value}`,
+          data: { key, value },
+        });
+        pendingSink.push(action);
+        return "기억 제안을 화면에 띄웠어요. Boss가 '기억하기'를 눌러야 저장돼요. 아직 기억한 게 아니에요.";
+      },
+    }),
+
+    tool({
+      name: "forget_memory",
+      description:
+        "Boss가 '잊어줘/지워줘/기억하지 마'라고 하면 되묻지 말고 바로 호출해서 지웁니다. key 에는 기억 목록의 이름표나 내용 속 핵심 단어 하나(예: '음식 취향' 또는 '매운').",
+      schema: z.object({ key: z.string().min(1).max(40) }),
+      run: async ({ key }) => {
+        const n = await forgetMemory(userId, { key });
+        return n ? `${n}개 지웠어요.` : "그런 기억은 없어요.";
       },
     }),
 
