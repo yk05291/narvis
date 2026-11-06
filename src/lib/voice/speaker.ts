@@ -2,7 +2,7 @@
 // Groq에는 한국어 음성 합성 모델이 없어서, 브라우저 내장 음성(speechSynthesis, 맥의 'Yuna' 등)을 써요.
 // 브라우저 음성은 소리 파형을 Web Audio로 꺼낼 수 없어서, 단어가 읽힐 때마다 오는 신호(boundary)로
 // '말하는 리듬'을 만들어 코어를 움직여요. (나중에 오디오 파일을 주는 TTS로 바꾸면 recorder.ts 처럼 AnalyserNode 로 진짜 파형 연결 가능)
-import { setLevel } from "./level";
+import { readRms, setLevel } from "./level";
 
 let speaking = false;
 let envelope = 0;
@@ -12,15 +12,23 @@ export function ttsSupported() {
   return typeof window !== "undefined" && "speechSynthesis" in window;
 }
 
-function koreanVoice(): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices().filter((v) => v.lang?.toLowerCase().startsWith("ko"));
-  // 자연스러운 음성 우선
-  const prefer = ["Yuna", "Google 한국의", "Sora", "Heami", "Narae"];
+function pickVoice(langPrefix: string, prefer: string[]): SpeechSynthesisVoice | null {
+  const voices = window.speechSynthesis.getVoices().filter((v) => v.lang?.toLowerCase().replace("_", "-").startsWith(langPrefix));
   for (const name of prefer) {
     const v = voices.find((x) => x.name.includes(name));
     if (v) return v;
   }
   return voices[0] ?? null;
+}
+
+// 한국어: 남성 목소리 우선 (맥: Reed·Eddy·Rocko), 없으면 다른 한국어 목소리
+function koreanVoice(): SpeechSynthesisVoice | null {
+  return pickVoice("ko", ["Reed", "Eddy", "Rocko", "Grandpa", "Yuna", "Google 한국의"]);
+}
+
+// 영어(미국) 남성 목소리 (인사용)
+function englishMaleVoice(): SpeechSynthesisVoice | null {
+  return pickVoice("en-us", ["Reed", "Eddy", "Rocko", "Fred", "Ralph", "Aaron", "Alex", "Microsoft Guy", "Microsoft David", "Google US English"]);
 }
 
 // 읽기 좋게 정리: 링크·기호·이모지 빼기
@@ -135,4 +143,87 @@ export function speak(text: string, opts: { rate?: number; onEnd?: () => void } 
 if (typeof window !== "undefined" && "speechSynthesis" in window) {
   window.speechSynthesis.getVoices();
   window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
+// ---------- 영어 인사 (미국 남성) ----------
+// 1순위: 서버(Groq Orpheus 'troy') 음성 파일 → AnalyserNode 로 진짜 파형을 코어에 연결
+// 2순위: 브라우저의 미국 영어 남성 목소리
+const greetingAudio = new Map<string, Promise<Blob | null>>();
+
+export function prefetchGreeting(text: string) {
+  if (!greetingAudio.has(text)) {
+    greetingAudio.set(
+      text,
+      fetch("/api/voice/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) })
+        .then((r) => (r.ok && r.headers.get("content-type")?.startsWith("audio/") ? r.blob() : null))
+        .catch(() => null),
+    );
+  }
+  return greetingAudio.get(text)!;
+}
+
+async function playBlob(blob: Blob, onEnd: () => void) {
+  const ctx = new AudioContext();
+  const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  src.connect(analyser);
+  analyser.connect(ctx.destination);
+  const data = new Float32Array(new ArrayBuffer(analyser.fftSize * 4));
+  let id = 0;
+  const loop = () => {
+    setLevel(readRms(analyser, data)); // 진짜 소리 크기 → 코어
+    id = requestAnimationFrame(loop);
+  };
+  src.onended = () => {
+    cancelAnimationFrame(id);
+    setLevel(0);
+    ctx.close().catch(() => {});
+    onEnd();
+  };
+  await ctx.resume().catch(() => {});
+  src.start();
+  loop();
+}
+
+export async function speakGreeting(text: string, onEnd: () => void) {
+  stopSpeaking();
+  const blob = await prefetchGreeting(text);
+  if (blob) {
+    try {
+      await playBlob(blob, onEnd);
+      return;
+    } catch {
+      /* 아래 브라우저 목소리로 */
+    }
+  }
+  if (!ttsSupported()) return onEnd();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  const v = englishMaleVoice();
+  if (v) u.voice = v;
+  u.rate = 1;
+  u.pitch = 0.9; // 조금 낮게 (차분한 30대 남성 느낌)
+  speaking = true;
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(animate);
+  u.onboundary = () => (envelope = 0.55 + Math.random() * 0.45);
+  // 브라우저가 '다 읽었음' 신호를 안 줘도 6초 뒤엔 다음(듣기)으로 넘어가요
+  let finished = false;
+  const done = () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(guard);
+    speaking = false;
+    onEnd();
+  };
+  const guard = setTimeout(() => {
+    window.speechSynthesis.cancel();
+    done();
+  }, 6000);
+  u.onend = done;
+  u.onerror = done;
+  window.speechSynthesis.speak(u);
 }

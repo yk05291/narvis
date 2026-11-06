@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import CalibrationPanel, { type Onboarding } from "./CalibrationPanel";
 import TodayPanel, { GOOGLE_MSG } from "./TodayPanel";
 import AICore from "./AICore";
@@ -10,11 +11,13 @@ import AssignmentsPanel from "./AssignmentsPanel";
 import NoticesPanel, { type Notice } from "./NoticesPanel";
 import FocusLayer from "./FocusLayer";
 import LiveClock from "./LiveClock";
+import InstallButton from "./InstallButton";
 import GoalsPanel from "./GoalsPanel";
 import AcademicPanel from "./AcademicPanel";
 import type { CoreState } from "@/lib/voice/level";
 import { startRecording, transcribe, type Recording } from "@/lib/voice/recorder";
-import { speak, stopSpeaking, ttsSupported } from "@/lib/voice/speaker";
+import { prefetchGreeting, speak, speakGreeting, stopSpeaking, ttsSupported } from "@/lib/voice/speaker";
+import { englishGreeting } from "@/lib/romanize";
 import { systemNotify, useProactiveAlerts, type ProactiveAlert } from "@/lib/useProactiveAlerts";
 import { playWakeChime, startClapListener, type ClapListener } from "@/lib/voice/clap";
 
@@ -71,6 +74,7 @@ export default function Home() {
   const [wakePulse, setWakePulse] = useState(0);
   const clapRef = useRef<ClapListener | null>(null);
   const micRef = useRef<() => void>(() => {});
+  const bossTitleRef = useRef("Boss"); // 박수 인사에 쓸 이름
   const [hint, setHint] = useState<string | null>(null);
   const recRef = useRef<Recording | null>(null);
   const [input, setInput] = useState("");
@@ -84,6 +88,7 @@ export default function Home() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   function enterMain(title: string, msg?: string) {
+    bossTitleRef.current = title || "Boss";
     setMode("main");
     setTurns([{ role: "assistant", text: msg ?? GREETING_MAIN(title) }]);
   }
@@ -94,6 +99,7 @@ export default function Home() {
       .then((d: Onboarding) => {
         if (d.step === "done") return enterMain(d.draft?.boss_title ?? "Boss");
         setOb(d);
+        if (d.draft?.boss_title) bossTitleRef.current = d.draft.boss_title;
         setMode("onboarding");
         const started = Object.keys(d.draft ?? {}).length > 0;
         setTurns([{ role: "assistant", text: started ? GREETING_RESUME : GREETING_ONBOARD }]);
@@ -170,13 +176,25 @@ export default function Home() {
   useEffect(() => {
     if (!clapOn || mode === "loading") return;
     let stopped = false;
+    // 인사 음성을 미리 받아둬서 박수 치면 바로 나오게
+    prefetchGreeting(englishGreeting(bossTitleRef.current));
     startClapListener(() => {
       // 다른 걸 하는 중이면 무시
       if (coreRef.current !== "STANDBY") return;
       setWakePulse((n) => n + 1); // 코어가 '번쩍' 깨어나요
       playWakeChime();
-      setHint("👏 박수 감지! 말씀하세요");
-      setTimeout(() => micRef.current(), 450); // 띠링 소리가 끝난 뒤 듣기 시작
+      // 미국 남성 목소리로 영어 인사 → 다 말하면 바로 듣기 시작
+      const hello = englishGreeting(bossTitleRef.current);
+      setTurns((t) => [...t, { role: "assistant", text: `👋 ${hello}` }]);
+      setHint("👏 박수 감지!");
+      setCore("SPEAKING");
+      setTimeout(() => {
+        speakGreeting(hello, () => {
+          setCore("STANDBY");
+          setHint("말씀하세요 🎤");
+          micRef.current();
+        });
+      }, 250);
     })
       .then((l) => {
         if (stopped) return l.stop();
@@ -453,13 +471,21 @@ export default function Home() {
       {/* ── 위쪽 얇은 바 ── */}
       <header className="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 whitespace-nowrap px-4 pt-4 font-mono text-[11px] tracking-[0.2em] text-cyan-300/70 lg:absolute lg:inset-x-0 lg:top-0 lg:px-6">
         <span className="flex items-center gap-2">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_#00f0ff]" />
-          NARVIS // v1.2
+          <Image
+            src="/logo-96.png"
+            alt="NARVIS 로고"
+            width={28}
+            height={28}
+            priority
+            className={`narvis-logo rounded-full ${core !== "STANDBY" ? "narvis-logo-active" : ""}`}
+          />
+          NARVIS // v1.3
           <span className="ml-3 hidden sm:inline">
             <LiveClock onDayChange={() => setScheduleKey((k) => k + 1)} />
           </span>
         </span>
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <InstallButton />
           {mode === "main" && (
             <button
               ref={memoryBtnRef}

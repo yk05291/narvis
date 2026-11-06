@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -15,6 +15,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "NARVIS",
   description: "Boss의 개인 AI 비서",
+  applicationName: "NARVIS",
+  appleWebApp: { capable: true, title: "NARVIS", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#050811",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

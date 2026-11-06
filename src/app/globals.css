@@ -75,6 +75,10 @@ body {
 .mic-orb:disabled { opacity: 0.4; }
 .mic-orb-rec { background: radial-gradient(circle, rgba(244, 63, 94, 0.35), rgba(6, 14, 26, 0.6)); border-color: #fb7185; color: #fecdd3; animation: recPulse 1.2s ease-in-out infinite; }
 
+/* 왼쪽 위 로고: 은은한 청록 빛, NARVIS가 듣거나 말할 때 더 밝게 */
+.narvis-logo { box-shadow: 0 0 10px rgba(80, 255, 220, 0.35); transition: box-shadow 0.4s, transform 0.4s; }
+.narvis-logo-active { box-shadow: 0 0 18px rgba(80, 255, 220, 0.8); transform: scale(1.08); }
+
 /* 얇은 스크롤바 */
 .hud-scroll { scrollbar-width: thin; scrollbar-color: rgba(0, 240, 255, 0.25) transparent; }
 

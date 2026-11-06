@@ -23,5 +23,5 @@ export async function proxy(req: NextRequest) {
 
 export const config = {
   // 로그인 화면, 로그인 API, 자동 수집(cron — 자체 비밀키로 보호), 정적 파일은 제외
-  matcher: ["/((?!login|api/login|api/cron|_next/static|_next/image|favicon.ico|clap-processor.js).*)"],
+  matcher: ["/((?!login|api/login|api/cron|_next/static|_next/image|favicon.ico|clap-processor.js|manifest.webmanifest|sw.js|offline.html|icon|apple-icon|logo-96.png).*)"],
 };
