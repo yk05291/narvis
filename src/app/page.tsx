@@ -9,6 +9,7 @@ import MemoryPanel from "./MemoryPanel";
 import AssignmentsPanel from "./AssignmentsPanel";
 import NoticesPanel, { type Notice } from "./NoticesPanel";
 import FocusLayer from "./FocusLayer";
+import LiveClock from "./LiveClock";
 import type { CoreState } from "@/lib/voice/level";
 import { startRecording, transcribe, type Recording } from "@/lib/voice/recorder";
 import { speak, stopSpeaking, ttsSupported } from "@/lib/voice/speaker";
@@ -317,7 +318,10 @@ export default function Home() {
       <header className="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 whitespace-nowrap px-4 pt-4 font-mono text-[11px] tracking-[0.2em] text-cyan-300/70 lg:absolute lg:inset-x-0 lg:top-0 lg:px-6">
         <span className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_#00f0ff]" />
-          NARVIS // v0.9
+          NARVIS // v1.0
+          <span className="ml-3 hidden sm:inline">
+            <LiveClock onDayChange={() => setScheduleKey((k) => k + 1)} />
+          </span>
         </span>
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {mode === "main" && (

@@ -24,13 +24,28 @@ function koreanVoice(): SpeechSynthesisVoice | null {
 }
 
 // 읽기 좋게 정리: 링크·기호·이모지 빼기
+const DAY_NAME: Record<string, string> = { 월: "월요일", 화: "화요일", 수: "수요일", 목: "목요일", 금: "금요일", 토: "토요일", 일: "일요일" };
+const hm = (h: string, m: string) => (m === "00" ? `${Number(h)}시` : m === "30" ? `${Number(h)}시 반` : `${Number(h)}시 ${Number(m)}분`);
+
 export function cleanForSpeech(text: string) {
   return text
     .replace(/https?:\/\/\S+/g, " ")
+    // 2026-11-06 (금) / 2026‑11‑06 → 11월 6일 금요일
+    .replace(
+      /\d{4}[-‑.]\s?(\d{1,2})[-‑.]\s?(\d{1,2})\.?(\s*)(?:\(([월화수목금토일])\)|([월화수목금토일])(?![가-힣]))?/g,
+      (_, m, d, sp, w1, w2) => `${Number(m)}월 ${Number(d)}일${w1 || w2 ? ` ${DAY_NAME[w1 || w2]}` : sp}`,
+    )
+    // 11/6 → 11월 6일
+    .replace(/(?<![\d:])(\d{1,2})\/(\d{1,2})(?![\d/])/g, (_, m, d) => `${Number(m)}월 ${Number(d)}일`)
+    // 13:00–15:00 / 13:00~15:00 → 13시부터 15시까지
+    .replace(/(\d{1,2}):(\d{2})\s*[-–~‑]\s*(\d{1,2}):(\d{2})/g, (_, h1, m1, h2, m2) => `${hm(h1, m1)}부터 ${hm(h2, m2)}까지`)
+    // D-3 → 3일 남음, D-DAY → 오늘 마감
+    .replace(/D-DAY/gi, "오늘 마감")
+    .replace(/D-(\d+)/g, (_, n) => `${n}일 남음`)
     .replace(/[*_#>`~|]/g, " ")
     .replace(/^\s*-\s+/gm, "")
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, "")
-    .replace(/(\d{1,2}):(\d{2})/g, (_, h, m) => (m === "00" ? `${Number(h)}시` : `${Number(h)}시 ${Number(m)}분`))
+    .replace(/(\d{1,2}):(\d{2})/g, (_, h, m) => hm(h, m))
     .replace(/\s+/g, " ")
     .trim();
 }

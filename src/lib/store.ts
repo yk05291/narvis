@@ -53,9 +53,7 @@ export type PendingAction =
     };
 
 // ---------- 날짜 도우미 (한국 시간 기준) ----------
-export function todayKST(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()); // "2026-11-06"
-}
+export { todayKST } from "./time";
 
 function dayOfWeek(isoDate: string): number {
   const d = new Date(`${isoDate}T12:00:00+09:00`).getUTCDay(); // 0 = 일요일

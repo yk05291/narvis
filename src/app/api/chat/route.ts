@@ -1,7 +1,8 @@
 // NARVIS 대화 API: 화면에서 보낸 대화를 Groq에게 전달하고, 도구를 쓰게 한 뒤 답을 돌려줘요.
 import { makeTools } from "@/lib/tools";
 import { runAgent, GroqError } from "@/lib/groq";
-import { getProfile, todayKST, type PendingAction } from "@/lib/store";
+import { getProfile, type PendingAction } from "@/lib/store";
+import { nowContext } from "@/lib/time";
 import type { NoticeRow } from "@/lib/extract";
 import { listMemories, memoriesForPrompt } from "@/lib/memories";
 
@@ -21,21 +22,6 @@ const FOCUS_BY_TOOL: Record<string, "briefing" | "schedule" | "study" | "notices
   search_school_notices: "notices",
   forget_memory: "memory",
 };
-
-// AI가 요일 계산을 틀리지 않도록: 이번 주 월요일부터 3주치 날짜+요일 표 (주 단위로 이름표)
-function calendarTable() {
-  const days = ["일", "월", "화", "수", "목", "금", "토"];
-  const today = new Date(`${todayKST()}T12:00:00+09:00`);
-  const dow = (today.getUTCDay() + 6) % 7; // 월=0 ... 일=6
-  const monday = new Date(today.getTime() - dow * 86400000);
-  const weekName = ["이번 주", "다음 주", "다다음 주"];
-  return Array.from({ length: 21 }, (_, i) => {
-    const d = new Date(monday.getTime() + i * 86400000);
-    const iso = d.toISOString().slice(0, 10);
-    const tag = i === dow ? " ← 오늘" : i < dow ? " (지남)" : "";
-    return `${i % 7 === 0 ? `  [${weekName[i / 7]}]\n` : ""}  ${iso} (${days[d.getUTCDay()]})${tag}`;
-  }).join("\n");
-}
 
 export async function POST(req: Request) {
   let turns: ChatTurn[];
@@ -70,11 +56,12 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join(", ");
 
-  const system = `너는 NARVIS, ${profile.boss_title}의 개인 AI 비서야. 사용자는 한양여자대학교 학생이고, 항상 "${profile.boss_title}"라고 불러.
+  const system = `${nowContext()}
+
+너는 NARVIS, ${profile.boss_title}의 개인 AI 비서야. 사용자는 한양여자대학교 학생이고, 항상 "${profile.boss_title}"라고 불러.
 - ${profile.boss_title}에 대해 아는 것: ${about || "아직 없음"}. 공지를 찾을 때 학년·학과에 맞는 걸 먼저 알려주고, 아침 일정은 통학 시간을 고려해 조언해.
 - 반드시 한국어로 짧고 명확하게 대답해. 화면이 마크다운을 못 보여주니 ** 같은 기호는 쓰지 말고 줄바꿈과 "-"만 써.
-- 달력(한국 시간, 주는 월요일 시작)이야. "이번 주 수요일", "다음주 월요일" 같은 날짜는 반드시 이 표에서 찾아. 날짜를 말할 땐 요일도 표 그대로:
-${calendarTable()}
+- 날짜를 말할 땐 요일도 [달력] 표 그대로.
 - 일정·과제 질문에는 추측하지 말고 도구로 확인해.
 - get_today_schedule 결과에서 classes 는 시간표(구글과 무관), google_events 는 구글 캘린더 일정이야. 구글이 연결 안 됐다는 말은 사용자가 구글 일정을 물을 때만 해.
 - 일정 추가를 승인하면 구글 캘린더가 연결돼 있을 땐 구글 캘린더에 바로 들어가.

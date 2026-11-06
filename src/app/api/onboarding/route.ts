@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { runAgent, GroqError } from "@/lib/groq";
 import { makeOnboardingTools } from "@/lib/onboarding-tools";
 import { getOnboarding, missingFields } from "@/lib/onboarding";
+import { nowContext } from "@/lib/time";
 
 const USER_ID = "local-boss";
 type ChatTurn = { role: "user" | "assistant"; text: string };
@@ -34,7 +35,9 @@ export async function POST(req: Request) {
   }
 
   const before = await status();
-  const system = `너는 NARVIS, 한양여자대학교 학생의 개인 AI 비서야. 지금은 처음 만나서 '워크스페이스 보정(calibration)' 중이야.
+  const system = `${nowContext()}
+
+너는 NARVIS, 한양여자대학교 학생의 개인 AI 비서야. 지금은 처음 만나서 '워크스페이스 보정(calibration)' 중이야.
 목표: 대화로 아래 정보를 모아서 도구로 임시 저장하기.
 - 필수: 호칭(뭐라고 불러줄지), 학과, 학년(1~4), 이번 학기(1 또는 2), 시간표(또는 '나중에')
 - 선택: 일어나는 시간, 자는 시간, 통학 시간(분), 아침 브리핑 시간(기본 8시. 일어나는 시간을 알면 그 즈음을 추천) — 한 번만 가볍게 물어보고, 싫다고 하면 넘어가.
@@ -50,7 +53,8 @@ export async function POST(req: Request) {
 - 애매하면 추측하지 말고 다시 물어봐.
 - 필수 정보가 다 모이면 화면에 요약 패널과 '확인' 버튼이 자동으로 떠. 그때 선택 항목을 아직 안 물어봤으면 한 번 물어보고, 그다음 패널을 보고 확인을 눌러달라고 해. 진짜 저장은 확인 버튼을 눌러야 돼.
 - 실제로 도구로 저장하지 않은 걸 저장했다고 말하지 마.
-- 이 대화와 관계없는 부탁이 오면, 설정을 먼저 끝내자고 부드럽게 말해.
+- 오늘 날짜·요일·시간 같은 간단한 질문엔 [지금] 정보로 바로 짧게 답하고, 이어서 설정을 계속해.
+- 그 밖에 설정과 관계없는 부탁이 오면, 설정을 먼저 끝내자고 부드럽게 말해.
 
 지금까지 임시 저장된 정보: ${JSON.stringify(before.draft)}
 아직 빠진 필수 항목: ${before.missing.join(", ") || "없음"}`;
