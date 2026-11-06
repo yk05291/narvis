@@ -16,6 +16,7 @@ import type { CoreState } from "@/lib/voice/level";
 import { startRecording, transcribe, type Recording } from "@/lib/voice/recorder";
 import { speak, stopSpeaking, ttsSupported } from "@/lib/voice/speaker";
 import { systemNotify, useProactiveAlerts, type ProactiveAlert } from "@/lib/useProactiveAlerts";
+import { playWakeChime, startClapListener, type ClapListener } from "@/lib/voice/clap";
 
 type ChatTurn = { role: "user" | "assistant"; text: string; notices?: Notice[] };
 type PendingAction = { id: string; kind: string; summary: string };
@@ -66,6 +67,10 @@ export default function Home() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [alertsOn, setAlertsOn] = useState(true);
   const [toasts, setToasts] = useState<ProactiveAlert[]>([]);
+  const [clapOn, setClapOn] = useState(false);
+  const [wakePulse, setWakePulse] = useState(0);
+  const clapRef = useRef<ClapListener | null>(null);
+  const micRef = useRef<() => void>(() => {});
   const [hint, setHint] = useState<string | null>(null);
   const recRef = useRef<Recording | null>(null);
   const [input, setInput] = useState("");
@@ -143,6 +148,61 @@ export default function Home() {
     const t = setTimeout(() => setAlertsOn(saved !== "off"), 0);
     return () => clearTimeout(t);
   }, []);
+
+  // 박수 두 번 감지: CLAP ON일 때만 마이크를 계속 들어요 (설정은 이 브라우저에 기억)
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem("narvis_clap");
+    } catch {}
+    const t = setTimeout(() => setClapOn(saved === "on"), 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  function toggleClap() {
+    const next = !clapOn;
+    setClapOn(next);
+    try {
+      localStorage.setItem("narvis_clap", next ? "on" : "off");
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (!clapOn || mode === "loading") return;
+    let stopped = false;
+    startClapListener(() => {
+      // 다른 걸 하는 중이면 무시
+      if (coreRef.current !== "STANDBY") return;
+      setWakePulse((n) => n + 1); // 코어가 '번쩍' 깨어나요
+      playWakeChime();
+      setHint("👏 박수 감지! 말씀하세요");
+      setTimeout(() => micRef.current(), 450); // 띠링 소리가 끝난 뒤 듣기 시작
+    })
+      .then((l) => {
+        if (stopped) return l.stop();
+        clapRef.current = l;
+        l.pause(coreRef.current !== "STANDBY");
+      })
+      .catch((e) => {
+        const name = e instanceof DOMException ? e.name : "";
+        setError(
+          name === "NotAllowedError"
+            ? "박수 감지를 하려면 마이크 권한이 필요해요. 주소창 왼쪽 자물쇠에서 마이크를 '허용'으로 바꿔 주세요."
+            : `박수 감지를 켜지 못했어요: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        setClapOn(false);
+      });
+    return () => {
+      stopped = true;
+      clapRef.current?.stop();
+      clapRef.current = null;
+    };
+  }, [clapOn, mode]);
+
+  // NARVIS가 듣거나 생각하거나 말하는 중엔 박수 감지 쉬기 (자기 목소리에 반응 안 하게)
+  useEffect(() => {
+    clapRef.current?.pause(core !== "STANDBY");
+  }, [core]);
 
   async function toggleAlerts() {
     const next = !alertsOn;
@@ -255,6 +315,11 @@ export default function Home() {
       setCore("STANDBY");
     }
   }
+
+  // 박수 감지가 항상 최신 마이크 함수를 부르도록
+  useEffect(() => {
+    micRef.current = toggleMic;
+  });
 
   // 새 메시지가 오면 대화창 안에서만 맨 아래로 (페이지 전체는 안 움직이게)
   useEffect(() => {
@@ -389,7 +454,7 @@ export default function Home() {
       <header className="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 whitespace-nowrap px-4 pt-4 font-mono text-[11px] tracking-[0.2em] text-cyan-300/70 lg:absolute lg:inset-x-0 lg:top-0 lg:px-6">
         <span className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_#00f0ff]" />
-          NARVIS // v1.1
+          NARVIS // v1.2
           <span className="ml-3 hidden sm:inline">
             <LiveClock onDayChange={() => setScheduleKey((k) => k + 1)} />
           </span>
@@ -420,6 +485,14 @@ export default function Home() {
               ALERTS {alertsOn ? "ON" : "OFF"}
             </button>
           )}
+          <button
+            onClick={toggleClap}
+            className={clapOn ? "text-cyan-300" : "text-cyan-100/40"}
+            aria-pressed={clapOn}
+            title="박수 두 번 치면 NARVIS가 깨어나서 들어요 (켜져 있는 동안 마이크 사용)"
+          >
+            {clapOn ? "👏 CLAP ON" : "CLAP OFF"}
+          </button>
           <button
             onClick={toggleVoice}
             className={voiceOn ? "text-cyan-300" : "text-cyan-100/40"}
@@ -456,7 +529,7 @@ export default function Home() {
         className={`pointer-events-none relative flex justify-center pt-2 lg:absolute lg:inset-0 lg:items-center lg:pt-0 ${focus ? "z-[45]" : "z-0"}`}
       >
         <div className={`core-wrap ${focus && !focus.closing ? "core-focused" : ""}`}>
-          <AICore state={core} className="h-[min(46vh,92vw)] w-[min(46vh,92vw)] lg:h-[min(76vh,60vw)] lg:w-[min(76vh,60vw)]" />
+          <AICore state={core} pulse={wakePulse} className="h-[min(46vh,92vw)] w-[min(46vh,92vw)] lg:h-[min(76vh,60vw)] lg:w-[min(76vh,60vw)]" />
         </div>
       </div>
 

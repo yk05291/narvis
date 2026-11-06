@@ -36,7 +36,15 @@ function webglAvailable() {
   }
 }
 
-export default function AICore({ state, className = "h-[220px] w-[220px]" }: { state: CoreState; className?: string }) {
+export default function AICore({
+  state,
+  className = "h-[220px] w-[220px]",
+  pulse = 0,
+}: {
+  state: CoreState;
+  className?: string;
+  pulse?: number; // 값이 바뀔 때마다 '깨어나는' 빛 폭발 효과 (박수 감지 등)
+}) {
   const mountRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
   const [fallback, setFallback] = useState(false);
@@ -44,6 +52,10 @@ export default function AICore({ state, className = "h-[220px] w-[220px]" }: { s
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+  const pulseAt = useRef(-10);
+  useEffect(() => {
+    if (pulse > 0) pulseAt.current = performance.now() / 1000;
+  }, [pulse]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -147,7 +159,10 @@ export default function AICore({ state, className = "h-[220px] w-[220px]" }: { s
       const st = stateRef.current;
       // 소리 크기를 부드럽게 따라가기
       smoothLevel += (audioLevel.value - smoothLevel) * Math.min(1, dt * 14);
-      const lv = st === "LISTENING" || st === "SPEAKING" ? smoothLevel : 0;
+      // 깨어나는 효과: 0.8초 동안 크게 부풀었다가 가라앉음
+      const since = t - pulseAt.current;
+      const burst = since >= 0 && since < 1.2 ? Math.exp(-since * 4) : 0;
+      const lv = Math.max(st === "LISTENING" || st === "SPEAKING" ? smoothLevel : 0, burst);
 
       // 크기
       let target = 1;
@@ -156,7 +171,7 @@ export default function AICore({ state, className = "h-[220px] w-[220px]" }: { s
       if (st === "THINKING") target = 0.95 + 0.04 * Math.sin(t * 6);
       if (st === "SPEAKING") target = 1 + lv * 0.38;
       scale += (target - scale) * Math.min(1, dt * 10);
-      group.scale.setScalar(scale);
+      group.scale.setScalar(scale * (1 + burst * 0.35));
 
       // 회전 속도
       const speed = reduceMotion ? 0.05 : { STANDBY: 0.15, LISTENING: 0.3, THINKING: 1.6, SPEAKING: 0.45 }[st];
@@ -189,9 +204,9 @@ export default function AICore({ state, className = "h-[220px] w-[220px]" }: { s
       pGeo.attributes.position.needsUpdate = true;
 
       // 듣는 중: 링이 소리에 맞춰 퍼짐
-      const ringTarget = st === "LISTENING" ? 0.25 + lv * 0.75 : 0;
+      const ringTarget = Math.max(st === "LISTENING" ? 0.25 + lv * 0.75 : 0, burst);
       ringMat.opacity += (ringTarget - ringMat.opacity) * Math.min(1, dt * 10);
-      ring.scale.setScalar(1 + lv * 0.35 + (st === "LISTENING" && !reduceMotion ? 0.04 * Math.sin(t * 5) : 0));
+      ring.scale.setScalar(1 + lv * 0.35 + burst * (1 - burst) * 2.2 + (st === "LISTENING" && !reduceMotion ? 0.04 * Math.sin(t * 5) : 0));
 
       renderer.render(scene, camera);
       raf = requestAnimationFrame(frame);
