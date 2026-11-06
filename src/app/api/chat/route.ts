@@ -5,6 +5,7 @@ import { getProfile, type PendingAction } from "@/lib/store";
 import { nowContext } from "@/lib/time";
 import type { NoticeRow } from "@/lib/extract";
 import { listMemories, memoriesForPrompt } from "@/lib/memories";
+import { goalsForPrompt, listGoals } from "@/lib/goals";
 
 // 1단계: 로그인 기능이 없으니 사용자 한 명으로 고정. (나중에 Supabase 로그인으로 교체)
 const USER_ID = "local-boss";
@@ -12,7 +13,7 @@ const USER_ID = "local-boss";
 type ChatTurn = { role: "user" | "assistant"; text: string };
 
 // 답할 때 쓴 도구 → 화면 가운데로 꺼낼 패널 (Focus Mode). 마지막에 쓴 것 우선.
-const FOCUS_BY_TOOL: Record<string, "briefing" | "schedule" | "study" | "notices" | "memory"> = {
+const FOCUS_BY_TOOL: Record<string, "briefing" | "schedule" | "study" | "notices" | "memory" | "goals"> = {
   get_morning_briefing: "briefing",
   get_today_schedule: "schedule",
   propose_add_calendar_event: "schedule",
@@ -21,6 +22,9 @@ const FOCUS_BY_TOOL: Record<string, "briefing" | "schedule" | "study" | "notices
   propose_add_assignment: "study",
   search_school_notices: "notices",
   forget_memory: "memory",
+  list_goals: "goals",
+  propose_add_goal: "goals",
+  update_goal: "goals",
 };
 
 export async function POST(req: Request) {
@@ -39,7 +43,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const [profile, memories] = await Promise.all([getProfile(USER_ID), listMemories(USER_ID)]);
+  const [profile, memories, goals] = await Promise.all([getProfile(USER_ID), listMemories(USER_ID), listGoals(USER_ID)]);
   const pending: PendingAction[] = [];
   const notices: NoticeRow[] = [];
   const out: { briefing?: string } = {};
@@ -71,7 +75,11 @@ export async function POST(req: Request) {
 - ${profile.boss_title}가 동의해서 기억하고 있는 것 (추천·조언할 때 자연스럽게 반영해. 단, 매번 "기억하고 있어요"라고 티 내지는 마):
 ${memoriesForPrompt(memories)}
 - ${profile.boss_title}가 오래 유효한 취향·사정을 말하면 propose_memory 로 기억을 제안할 수 있어 (한 대화에 최대 1개). 제안했으면 "기억해도 될지 화면에서 골라주세요"라고 짧게 말해. 저장됐다고 말하지 마. 이미 기억 목록에 같은 내용이 있으면 제안하지 마.
+- ${profile.boss_title}의 목표 (공지·일정·과제를 이야기할 때 관련 있으면 연결해서 짚어줘. 예: 취업 목표가 있으면 현장실습·취업 공지):
+${goalsForPrompt(goals)}
+- 새 목표를 세우고 싶어 하면 propose_add_goal, 진행 상황을 말하면 update_goal.
 - "잊어줘/지워줘"라고 하면 되묻지 말고 바로 forget_memory 를 호출하고, 결과대로 "잊었어요"라고 말해.
+- 학교 일정·공지·제도·마감 같은 사실은 도구로 확인한 것만 말해. 확인 안 된 건 지어내지 말고 "확인해 볼까요?"라고 물어봐. 묻지 않은 추가 정보는 덧붙이지 마.
 - 날짜나 시간이 애매하면 먼저 물어봐.`;
 
   try {

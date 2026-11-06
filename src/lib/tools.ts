@@ -15,6 +15,7 @@ import {
 import { searchNotices, type NoticeRow } from "./extract";
 import { getBriefing, setBriefingPrefs } from "./briefing";
 import { forgetMemory } from "./memories";
+import { CATEGORY_KO, findGoal, listGoals, updateGoal } from "./goals";
 
 export type Tool = {
   name: string;
@@ -143,6 +144,56 @@ export function makeTools(
         if (r.done) return `완료로 표시했어요: ${r.done.subject_name} · ${r.done.title}`;
         if (r.candidates.length === 0) return "남은 과제가 없어요.";
         return `어느 과제인지 애매해요. 후보: ${r.candidates.map((a) => `${a.subject_name} · ${a.title}`).join(" / ")}`;
+      },
+    }),
+
+    tool({
+      name: "list_goals",
+      description: "Boss의 목표(학업·취업·개인)와 진행률을 가져옵니다. '내 목표 어떻게 돼가?' 같은 질문에 사용.",
+      schema: z.object({ include_completed: z.boolean().nullish() }),
+      run: async ({ include_completed }) => {
+        const goals = await listGoals(userId, include_completed ?? false);
+        if (goals.length === 0) return "등록된 목표가 없어요.";
+        return JSON.stringify(goals.map((g) => ({ category: CATEGORY_KO[g.category], title: g.title, progress: g.progress, target_date: g.target_date, done: g.is_completed })));
+      },
+    }),
+
+    tool({
+      name: "propose_add_goal",
+      description: "새 목표 등록을 '제안'합니다. Boss가 화면에서 승인해야 저장돼요. 목표일이 애매하면 비워두세요.",
+      schema: z.object({
+        category: z.enum(["ACADEMIC", "CAREER", "PERSONAL"]).describe("ACADEMIC=학업(학점·자격증·시험), CAREER=취업(인턴·포트폴리오·지원), PERSONAL=개인(운동·습관)"),
+        title: z.string().min(1).max(100).describe("짧은 목표 이름 (예: 정보처리기사 필기 합격)"),
+        description: z.string().max(300).nullish().describe("Boss가 직접 말한 내용만. 없으면 비워두기 (추측해서 쓰지 마세요)"),
+        target_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish().describe("YYYY-MM-DD, [달력] 기준. Boss가 날짜를 정확히 말했을 때만"),
+      }),
+      run: async (g) => {
+        const action = await createPendingAction(userId, {
+          kind: "add_goal",
+          summary: `목표 추가 · [${CATEGORY_KO[g.category]}] ${g.title}${g.target_date ? ` (목표일 ${g.target_date})` : ""}`,
+          data: g,
+        });
+        pendingSink.push(action);
+        return "목표 등록을 제안했어요. Boss가 화면에서 승인해야 저장돼요.";
+      },
+    }),
+
+    tool({
+      name: "update_goal",
+      description:
+        "목표 진행률을 바꾸거나 달성 처리합니다 ('토익 50%까지 했어', '정처기 붙었어!'). 화면에서 되돌릴 수 있어서 바로 반영돼요. 애매하면 어느 목표인지 물어보세요.",
+      schema: z.object({
+        query: z.string().min(1).max(60).describe("목표 이름에 들어간 단어 (예: 토익, 정보처리기사)"),
+        progress: z.number().int().min(0).max(100).nullish(),
+        completed: z.boolean().nullish(),
+      }),
+      run: async ({ query, progress, completed }) => {
+        const r = await findGoal(userId, query);
+        if (!r.goal) {
+          return r.candidates.length ? `어느 목표인지 애매해요. 후보: ${r.candidates.map((g) => g.title).join(" / ")}` : "진행 중인 목표가 없어요.";
+        }
+        const g = await updateGoal(userId, r.goal.id, { progress: progress ?? undefined, is_completed: completed ?? undefined });
+        return g ? `반영했어요: ${g.title} ${g.is_completed ? "달성! 🎉" : `${g.progress}%`}` : "바꾸지 못했어요.";
       },
     }),
 

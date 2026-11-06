@@ -3,6 +3,7 @@ import "server-only";
 import { db, must } from "./db";
 import { createGoogleEvent, listGoogleEvents, type GoogleEvent } from "./google";
 import { saveMemory } from "./memories";
+import { createGoal, type GoalCategory } from "./goals";
 
 export type TimetableItem = {
   id: string;
@@ -50,6 +51,12 @@ export type PendingAction =
       kind: "save_memory";
       summary: string;
       data: { key: string; value: string };
+    }
+  | {
+      id: string;
+      kind: "add_goal";
+      summary: string;
+      data: { category: GoalCategory; title: string; description?: string | null; target_date?: string | null };
     };
 
 // ---------- 날짜 도우미 (한국 시간 기준) ----------
@@ -208,6 +215,10 @@ export async function resolvePendingAction(userId: string, actionId: string, app
     };
   }
 
+  if (action.kind === "add_goal") {
+    await createGoal(userId, action.data);
+    return { ok: true as const, message: `목표를 등록했어요: ${action.data.title}` };
+  }
   if (action.kind === "save_memory") {
     await saveMemory(userId, action.data.key, action.data.value);
     return { ok: true as const, message: `기억했어요: ${action.data.value}` };

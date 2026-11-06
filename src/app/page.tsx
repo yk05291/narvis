@@ -10,17 +10,19 @@ import AssignmentsPanel from "./AssignmentsPanel";
 import NoticesPanel, { type Notice } from "./NoticesPanel";
 import FocusLayer from "./FocusLayer";
 import LiveClock from "./LiveClock";
+import GoalsPanel from "./GoalsPanel";
 import type { CoreState } from "@/lib/voice/level";
 import { startRecording, transcribe, type Recording } from "@/lib/voice/recorder";
 import { speak, stopSpeaking, ttsSupported } from "@/lib/voice/speaker";
 
 type ChatTurn = { role: "user" | "assistant"; text: string; notices?: Notice[] };
 type PendingAction = { id: string; kind: string; summary: string };
-type FocusId = "briefing" | "schedule" | "study" | "notices" | "memory";
+type FocusId = "briefing" | "schedule" | "study" | "goals" | "notices" | "memory";
 const FOCUS_TITLE: Record<FocusId, string> = {
   briefing: "MORNING BRIEFING",
   schedule: "SCHEDULE",
   study: "STUDY PROGRESS",
+  goals: "GOALS",
   notices: "NOTICES",
   memory: "MEMORY",
 };
@@ -288,6 +290,8 @@ export default function Home() {
         return <TodayPanel refreshKey={scheduleKey} />;
       case "study":
         return <AssignmentsPanel refreshKey={scheduleKey} onChanged={() => setScheduleKey((k) => k + 1)} />;
+      case "goals":
+        return <GoalsPanel refreshKey={scheduleKey} />;
       case "notices":
         return <NoticesPanel limit={inFocus ? 10 : 4} />;
       case "memory":
@@ -399,6 +403,7 @@ export default function Home() {
             {slot("briefing")}
             {slot("schedule")}
             {slot("study")}
+            {slot("goals")}
             {slot("notices")}
           </>
         )}
