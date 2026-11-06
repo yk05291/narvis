@@ -1,26 +1,68 @@
 @import "tailwindcss";
 
+/* NARVIS HUD 색상 (설계서 7.1) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --bg: #050811;
+  --cyan: #00f0ff;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: #e6fbff;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+}
+
+.hud-bg {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(0, 240, 255, 0.08), transparent 50%),
+    var(--bg);
+}
+
+.glass {
+  background: rgba(10, 20, 35, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 12px;
+}
+
+.bubble {
+  display: inline-block;
+  max-width: 85%;
+  white-space: pre-wrap;
+  text-align: left;
+  padding: 0.5rem 0.8rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.bubble-ai { background: rgba(0, 240, 255, 0.08); border: 1px solid rgba(0, 240, 255, 0.25); }
+.bubble-user { background: rgba(255, 255, 255, 0.08); }
+
+.btn {
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-ok { background: rgba(0, 240, 255, 0.15); border: 1px solid var(--cyan); color: var(--cyan); }
+.btn-no { background: transparent; border: 1px solid rgba(255, 255, 255, 0.3); }
+.btn-rec { background: rgba(244, 63, 94, 0.2); border: 1px solid #fb7185; color: #fecdd3; animation: recPulse 1.2s ease-in-out infinite; }
+@keyframes recPulse { 50% { box-shadow: 0 0 0 6px rgba(251, 113, 133, 0.15); } }
+
+/* WebGL이 안 될 때 쓰는 예비 CSS 코어 */
+.core { position: relative; width: 140px; height: 140px; animation: breathe 4s ease-in-out infinite; }
+.core-ring, .core-center { position: absolute; border-radius: 50%; }
+.core-ring { inset: 0; border: 2px solid rgba(0, 240, 255, 0.5); border-top-color: transparent; animation: spin 8s linear infinite; }
+.core-ring-2 { inset: 18px; border-color: rgba(0, 240, 255, 0.3); border-bottom-color: transparent; animation-duration: 5s; animation-direction: reverse; }
+.core-center { inset: 45px; background: radial-gradient(circle, #aefcff, var(--cyan) 40%, transparent 70%); box-shadow: 0 0 30px var(--cyan); }
+.core-thinking .core-ring { animation-duration: 1.2s; }
+.core-thinking .core-center { background: radial-gradient(circle, #fff, #a78bfa 40%, transparent 70%); box-shadow: 0 0 45px #a78bfa; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe { 0%, 100% { transform: scale(0.9); } 50% { transform: scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .core, .core-ring { animation: none; }
 }

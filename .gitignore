@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# NARVIS 개인 데이터 (예시 파일만 공유)
+/data/narvis-data.json
+!.env.example
