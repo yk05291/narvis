@@ -21,14 +21,14 @@ Next.js 하나로 만든 버전이에요. 두뇌는 **Groq**(무료), 저장소�
 - 박수 인사: 박수 두 번 → 미국 남성 영어 인사("Good afternoon, Dahye. I'm listening.") → 바로 듣기. Groq Orpheus(troy) 약관 수락 시 자연스러운 AI 목소리, 아니면 맥 'Reed(영어)' 목소리. 한국어 답은 남성 목소리(Reed·Eddy) 우선
 - 앱 설치(PWA): 상단 ⬇ INSTALL — 맥 Dock·폰 홈 화면에서 앱처럼 실행, 오프라인 안내 화면
 - 로고: 왼쪽 위 NARVIS 옆 + 앱 아이콘 (Boss 제공 레퍼런스 이미지)
-- 비밀번호 잠금 (NARVIS_PASSWORD)
+- 비밀번호 잠금은 선택: Vercel 환경변수 `NARVIS_PASSWORD`를 설정하면 켜지고, 없으면 누구나 바로 접속
 
 ## 환경변수
 | 이름 | 설명 |
 |---|---|
 | `GROQ_API_KEY` | Groq 키 (`gsk_...`) |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Vercel Supabase 연동이 자동으로 넣어줘요 |
-| `NARVIS_PASSWORD` | 사이트 접속 비밀번호 |
+| `NARVIS_PASSWORD` | (선택) 사이트 접속 비밀번호. 없으면 잠금 없음 |
 | `CRON_SECRET` | 자동 수집 주소 보호용 비밀값 (아무 긴 글자) |
 | `ENCRYPTION_SECRET_KEY` | 구글 토큰 암호화 키 (32바이트 base64) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | 구글 클라우드 콘솔에서 만든 OAuth 클라이언트 |
