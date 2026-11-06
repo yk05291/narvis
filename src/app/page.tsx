@@ -15,6 +15,7 @@ import AcademicPanel from "./AcademicPanel";
 import type { CoreState } from "@/lib/voice/level";
 import { startRecording, transcribe, type Recording } from "@/lib/voice/recorder";
 import { speak, stopSpeaking, ttsSupported } from "@/lib/voice/speaker";
+import { systemNotify, useProactiveAlerts, type ProactiveAlert } from "@/lib/useProactiveAlerts";
 
 type ChatTurn = { role: "user" | "assistant"; text: string; notices?: Notice[] };
 type PendingAction = { id: string; kind: string; summary: string };
@@ -63,10 +64,16 @@ export default function Home() {
   const panelRefs = useRef<Partial<Record<FocusId, HTMLElement | null>>>({});
   const memoryBtnRef = useRef<HTMLButtonElement>(null);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [alertsOn, setAlertsOn] = useState(true);
+  const [toasts, setToasts] = useState<ProactiveAlert[]>([]);
   const [hint, setHint] = useState<string | null>(null);
   const recRef = useRef<Recording | null>(null);
   const [input, setInput] = useState("");
   const [core, setCore] = useState<CoreState>("STANDBY");
+  const coreRef = useRef<CoreState>("STANDBY");
+  useEffect(() => {
+    coreRef.current = core;
+  }, [core]);
   const [pending, setPending] = useState<PendingAction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -127,6 +134,62 @@ export default function Home() {
     const t = setTimeout(() => setVoiceOn(saved !== "off" && ttsSupported()), 0);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem("narvis_alerts");
+    } catch {}
+    const t = setTimeout(() => setAlertsOn(saved !== "off"), 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  async function toggleAlerts() {
+    const next = !alertsOn;
+    setAlertsOn(next);
+    try {
+      localStorage.setItem("narvis_alerts", next ? "on" : "off");
+    } catch {}
+    // 켤 때 한 번: 맥 알림 센터에 띄워도 되는지 브라우저가 물어봐요
+    if (next && typeof Notification !== "undefined" && Notification.permission === "default") {
+      await Notification.requestPermission().catch(() => {});
+    }
+  }
+
+  // 능동 알림: 시간이 되면 HUD 카드 + 대화 기록 + (음성 켜짐이면) 읽기 + 시스템 알림
+  useProactiveAlerts({
+    enabled: alertsOn && mode === "main",
+    refreshKey: scheduleKey,
+    onFire: (a) => {
+      setToasts((t) => [...t.filter((x) => x.id !== a.id), a].slice(-3));
+      setTurns((t) => [...t, { role: "assistant", text: `🔔 ${a.body}` }]);
+      systemNotify(a);
+      if (voiceOn && ttsSupported()) {
+        speechQueue.current.push(a.body);
+        setQueueTick((n) => n + 1);
+      }
+    },
+  });
+
+  // 알림 읽기 줄: 듣기·생각·말하기 중이 아닐 때 하나씩 차례로 읽어요
+  const speechQueue = useRef<string[]>([]);
+  const [queueTick, setQueueTick] = useState(0);
+  useEffect(() => {
+    if (core !== "STANDBY" || !voiceOn || speechQueue.current.length === 0) return;
+    const t = setTimeout(() => {
+      const text = speechQueue.current.shift();
+      if (!text) return;
+      setCore("SPEAKING");
+      speak(text, { onEnd: () => setCore((x) => (x === "SPEAKING" ? "STANDBY" : x)) });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [core, voiceOn, queueTick]);
+  // 알림 카드는 1분 뒤 자동으로 사라져요
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const t = setTimeout(() => setToasts((x) => x.slice(1)), 60_000);
+    return () => clearTimeout(t);
+  }, [toasts]);
 
   function toggleVoice() {
     const next = !voiceOn;
@@ -326,7 +389,7 @@ export default function Home() {
       <header className="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 whitespace-nowrap px-4 pt-4 font-mono text-[11px] tracking-[0.2em] text-cyan-300/70 lg:absolute lg:inset-x-0 lg:top-0 lg:px-6">
         <span className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_#00f0ff]" />
-          NARVIS // v1.0
+          NARVIS // v1.1
           <span className="ml-3 hidden sm:inline">
             <LiveClock onDayChange={() => setScheduleKey((k) => k + 1)} />
           </span>
@@ -347,6 +410,16 @@ export default function Home() {
               PROFILE
             </button>
           )}
+          {mode === "main" && (
+            <button
+              onClick={toggleAlerts}
+              className={alertsOn ? "text-cyan-300" : "text-cyan-100/40"}
+              aria-pressed={alertsOn}
+              title="수업·마감·학사일정을 시간 맞춰 먼저 알려주기"
+            >
+              ALERTS {alertsOn ? "ON" : "OFF"}
+            </button>
+          )}
           <button
             onClick={toggleVoice}
             className={voiceOn ? "text-cyan-300" : "text-cyan-100/40"}
@@ -357,6 +430,26 @@ export default function Home() {
           </button>
         </span>
       </header>
+
+      {/* ── 능동 알림 카드 (위 가운데) ── */}
+      {toasts.length > 0 && (
+        <div className="fixed left-1/2 top-12 z-[60] flex w-[min(480px,calc(100vw-32px))] -translate-x-1/2 flex-col gap-2" role="status" aria-live="polite">
+          {toasts.map((a) => (
+            <div key={a.id} className="glass glass-alert alert-in flex items-start gap-3 px-4 py-3 text-sm">
+              <span aria-hidden className="text-lg leading-none">
+                {{ class: "📚", leave: "🚶", assignment: "⏰", academic: "🏫", event: "📅" }[a.kind]}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-mono text-[11px] tracking-widest text-amber-300">{a.title}</span>
+                <span className="text-cyan-50/90">{a.body}</span>
+              </span>
+              <button onClick={() => setToasts((t) => t.filter((x) => x.id !== a.id))} className="text-cyan-100/50 hover:text-cyan-200" aria-label="알림 닫기">
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── 가운데: 거대한 AI 코어 (화면의 주인공) ── */}
       <div

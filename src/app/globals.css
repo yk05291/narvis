@@ -46,6 +46,8 @@ body {
   border-radius: 6px;
   box-shadow: 0 0 22px rgba(0, 240, 255, 0.05), inset 0 0 18px rgba(0, 240, 255, 0.03);
 }
+.alert-in { animation: alertIn 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes alertIn { from { opacity: 0; transform: translateY(-12px); } }
 .glass-alert { --c: rgba(252, 211, 77, 0.85); border-color: rgba(252, 211, 77, 0.3); }
 
 /* 거대한 코어: Focus Mode 에선 작아지며 위로 (큰 화면에서만) */
